@@ -169,13 +169,13 @@ mod tests {
         let truth = KinematicState {
             position_world_m: Vec3::new(10.0, 20.0, 30.0),
             velocity_world_mps: Vec3::new(3.0, 4.0, 5.0),
-            angular_velocity_body_radps: Vec3::repeat(7.0),
+            angular_velocity_world_radps: Vec3::repeat(7.0),
             ..KinematicState::default()
         };
         let sample = sensor(0.0).measure(&truth, &mut SensorRandom::new(123, 1, "NoisyState:0"))?;
         assert_eq!(sample.state.position_world_m, Vec3::new(12.0, 22.0, 32.0));
         assert_eq!(sample.state.velocity_world_mps, Vec3::new(2.0, 3.0, 4.0));
-        assert_eq!(sample.state.angular_velocity_body_radps, Vec3::zeros());
+        assert_eq!(sample.state.angular_velocity_world_radps, Vec3::zeros());
         assert_eq!(sample.covariance, nalgebra::Matrix3::identity());
         assert_eq!(truth.position_world_m, Vec3::new(10.0, 20.0, 30.0));
         Ok(())

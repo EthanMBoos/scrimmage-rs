@@ -154,6 +154,9 @@ impl SimpleAircraft {
         control: AircraftControl,
         dt_s: f64,
     ) -> Result<()> {
+        // Matches C++ for now, though we don't consider it correct: integration continues
+        // from this private state, so changes an interaction makes to truth (position,
+        // velocity, attitude) are overwritten on the next motion step.
         self.clamp_state();
 
         let limited_control = AircraftControl {
@@ -185,8 +188,9 @@ impl SimpleAircraft {
         let state = self.state;
         truth.position_world_m = state.position_world_m;
         truth.orientation_world_from_body = state.orientation_world_from_body();
-        // Preserve the reference discrepancy: reported vertical velocity uses +sin(pitch),
-        // while altitude integration below uses -sin(pitch).
+        // Matches C++ for now, though we don't consider it correct: reported vertical
+        // velocity uses +sin(pitch), while altitude integration below uses -sin(pitch).
+        // Angular velocity is also never set, so turning aircraft report zero rates.
         truth.velocity_world_mps = Vec3::new(
             state.speed_mps * state.yaw_world_from_body_rad.cos() * state.pitch_model_rad.cos(),
             state.speed_mps * state.yaw_world_from_body_rad.sin() * state.pitch_model_rad.cos(),

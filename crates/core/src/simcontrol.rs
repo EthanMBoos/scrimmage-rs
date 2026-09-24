@@ -282,7 +282,9 @@ impl Simulation {
 
     fn finish(&mut self) -> Result<SimulationFrame> {
         self.finished = true;
-        // Preserve the repeated final timestamp in legacy logs.
+        // Matches C++ for now, though we'd prefer a monotonic clock: rewinding repeats the
+        // final timestamp in legacy logs, but terminal events, plugin close, and the
+        // metrics report also see this rewound time, not only the frame writer.
         self.time_s -= self.config.dt_s;
         for entity in &self.entities {
             self.events.push(Event {

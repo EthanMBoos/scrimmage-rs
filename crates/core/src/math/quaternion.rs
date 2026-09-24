@@ -45,6 +45,23 @@ impl Quaternion {
         )
     }
 
+    /// Inverse rotation; assumes a unit quaternion.
+    pub fn rotate_world_to_body(self, vector_world: Vec3) -> Vec3 {
+        Self {
+            w: self.w,
+            x: -self.x,
+            y: -self.y,
+            z: -self.z,
+        }
+        .rotate_body_to_world(vector_world)
+    }
+
+    pub fn pitch_world_from_body_rad(self) -> f64 {
+        (2.0 * (self.w * self.y - self.z * self.x))
+            .clamp(-1.0, 1.0)
+            .asin()
+    }
+
     pub fn yaw_world_from_body_rad(self) -> f64 {
         (2.0 * (self.w * self.z + self.x * self.y))
             .atan2(1.0 - 2.0 * (self.y * self.y + self.z * self.z))

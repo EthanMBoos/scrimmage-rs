@@ -40,6 +40,7 @@ pub trait Plugin: Send + Sized + 'static {
 pub struct StepTime {
     /// Reference phase time, not wall time.
     pub time_s: f64,
+    /// This phase's integration interval (smaller during controller/motion substeps).
     pub dt_s: f64,
 }
 

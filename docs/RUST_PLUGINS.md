@@ -179,6 +179,14 @@ Autonomies/controllers receive read-only state; motion receives mutable truth.
 Interactions receive the entities after motion and sensors, and can update
 physical state or health. Structural creation/removal remains engine-owned.
 
+`KinematicState` stores position, linear velocity, and angular velocity in the
+local ENU world frame: `position_world_m`, `velocity_world_mps`, and
+`angular_velocity_world_radps`. Its quaternion rotates forward/left/up body
+axes into world axes. Motion models keep their own body-frame rates private
+and convert when reading/writing truth, as C++ FixedWing6DOF does. Frame recording
+copies world velocities directly; it performs no body/world rotation. A sensor
+or controller needing body rates can use `orientation_world_from_body.rotate_world_to_body(...)`.
+
 `AgentContext.state` reads the entity's owned belief, falling back to read-only
 truth when no sensor has installed an estimate. Sensors call
 `context.set_belief(state)` with an owned value or `context.clear_belief()` to

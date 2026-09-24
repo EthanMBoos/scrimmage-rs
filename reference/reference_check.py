@@ -29,6 +29,7 @@ MISSIONS = (
     "verification/aircraft-substeps-spawning.xml",
     "verification/noisy-state-bias.xml",
     "networks-local-global.xml",
+    "fixed-wing-6dof.xml",
 )
 OUTPUT_FILES = ("frames.bin", "events.json", "summary.csv")
 

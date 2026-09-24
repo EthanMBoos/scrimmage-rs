@@ -22,6 +22,10 @@ RUN cmake -S /opt/source -B /opt/build \
       LocalNetwork_plugin GlobalNetwork_plugin NoisyState_plugin \
       Boundary_plugin GroundCollision_plugin
 
+# Separate layer keeps the established reference build cached.
+RUN cmake --build /opt/build --parallel ${BUILD_JOBS} --target \
+      FixedWing6DOF_plugin AircraftPIDController_plugin
+
 ENV SCRIMMAGE_DIR=/opt/source \
     SCRIMMAGE_PLUGIN_PATH=/opt/build/plugin_libs:/opt/source/include/scrimmage/plugins \
     SCRIMMAGE_DATA_PATH=/opt/source/data \

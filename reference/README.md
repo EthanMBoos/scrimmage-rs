@@ -36,7 +36,7 @@ The upstream dependency Dockerfile itself clones GitHub for its setup scripts;
 that is distinct from the archived source used for the reference executable.
 
 [Dockerfile](Dockerfile) disables optional VTK, gRPC, OpenCV, ROS, and GPU build
-paths and builds the executable plus the ten C++ plugins needed by the current
+paths and builds the executable plus the twelve C++ plugins needed by the current
 matrix. This is a headless comparison build, not verification of the full C++
 plugin catalog. No C++ simulator logic or random generator is patched.
 `VTK_FOUND=OFF` is set explicitly because upstream CMake expands that variable
@@ -56,6 +56,7 @@ dedicated host output mount; they are removed after the run.
 | `verification/aircraft-substeps-spawning.xml` | Actual five-substep execution, rates, randomized state, and scheduled spawning |
 | `verification/noisy-state-bias.xml` | NoisyState deterministic bias/attitude equations and belief feedback, without stochastic sequence differences |
 | `networks-local-global.xml` | Boundary response over GlobalNetwork, local own-state feedback, ground removal and metrics |
+| `fixed-wing-6dof.xml` | Aerodynamic flight, tilted/northbound attitude, nonzero rates and wind |
 
 Each case runs C++ headless and single-threaded. Rust runs with 1, 2, and 8
 workers without Rerun, plus an eight-worker headless Rerun recording.
@@ -143,3 +144,21 @@ Test the checker itself without Docker:
 ```sh
 python3 -m unittest discover -s reference -p 'test_*.py'
 ```
+
+## Preliminary benchmark
+
+After building the reference image with the checker above:
+
+```sh
+python3 reference/benchmark.py --output runs/new-benchmark
+```
+
+This builds a Release core-only Rust harness and runs both implementations in
+one `linux/amd64` container, with C++ always single-threaded and Rust at 1/8 workers.
+Defaults: 128 entities, 1,000 steps, one warmup and three measured runs each.
+`--entities`, `--steps`, and `--repetitions` override those sizes. The script
+checks reference output and repeatability; a mismatch is a failure, not a timing
+result to advertise. No Rerun is built into the harness. Timing includes process
+startup, parsing, simulation, and logging, but excludes builds/container startup.
+The [benchmark code](benchmark.py) records the measured baseline and limitations;
+each run saves raw samples and environment details in its output directory.

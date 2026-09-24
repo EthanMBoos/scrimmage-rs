@@ -12,3 +12,8 @@ rayon.workspace = true
 roxmltree.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+
+[[bench]]
+name = "reference"
+path = "../../reference/benchmark_runner.rs"
+harness = false

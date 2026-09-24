@@ -72,7 +72,7 @@ impl From<&SimulationFrame> for wire::Frame {
                         z: orientation.z,
                     }),
                     linear_velocity: Some(truth.velocity_world_mps.into()),
-                    angular_velocity: Some(truth.angular_velocity_body_radps.into()),
+                    angular_velocity: Some(truth.angular_velocity_world_radps.into()),
                 }),
                 r#type: contact_type,
                 active: entity.active,
@@ -118,6 +118,12 @@ impl TryFrom<wire::Frame> for SimulationFrame {
                 (norm_squared - 1.0).abs() < 1e-8,
                 "orientation is not a unit quaternion"
             );
+            let orientation = Quaternion {
+                w: orientation.w,
+                x: orientation.x,
+                y: orientation.y,
+                z: orientation.z,
+            };
 
             let kind = match contact.r#type {
                 0 => EntityKind::Aircraft,
@@ -133,14 +139,9 @@ impl TryFrom<wire::Frame> for SimulationFrame {
                 team_id: id.team_id,
                 truth: KinematicState {
                     position_world_m: decode_vector(state.position, "position")?,
-                    orientation_world_from_body: Quaternion {
-                        w: orientation.w,
-                        x: orientation.x,
-                        y: orientation.y,
-                        z: orientation.z,
-                    },
+                    orientation_world_from_body: orientation,
                     velocity_world_mps: decode_vector(state.linear_velocity, "linear velocity")?,
-                    angular_velocity_body_radps: decode_vector(
+                    angular_velocity_world_radps: decode_vector(
                         state.angular_velocity,
                         "angular velocity",
                     )?,
@@ -159,6 +160,47 @@ impl TryFrom<wire::Frame> for SimulationFrame {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recording_preserves_world_angular_velocity_without_rotation() -> Result<()> {
+        let rates_world_radps = Vec3::new(1.0, -2.0, 3.0);
+        let frame = SimulationFrame {
+            time_s: 1.0,
+            entities: vec![EntitySnapshot {
+                id: 1,
+                sub_swarm_id: 0,
+                team_id: 1,
+                kind: EntityKind::Aircraft,
+                active: true,
+                truth: KinematicState {
+                    // A rotated aircraft makes an accidental body/world conversion visible.
+                    orientation_world_from_body: Quaternion::from_euler(crate::math::EulerAngles {
+                        yaw_world_from_body_rad: std::f64::consts::FRAC_PI_2,
+                        ..crate::math::EulerAngles::default()
+                    }),
+                    angular_velocity_world_radps: rates_world_radps,
+                    ..KinematicState::default()
+                },
+            }],
+        };
+        let mut bytes = Vec::new();
+        write_frame(&mut bytes, &frame)?;
+        let recorded = wire::Frame::decode_length_delimited(bytes.as_slice())?;
+        let rates = recorded.contact[0]
+            .state
+            .as_ref()
+            .unwrap()
+            .angular_velocity
+            .as_ref()
+            .unwrap();
+        assert_eq!(Vec3::new(rates.x, rates.y, rates.z), rates_world_radps);
+        let decoded = SimulationFrame::try_from(recorded)?;
+        assert_eq!(
+            decoded.entities[0].truth.angular_velocity_world_radps,
+            rates_world_radps
+        );
+        Ok(())
+    }
 
     #[test]
     fn missing_contact_state_is_rejected_at_the_input_boundary() {

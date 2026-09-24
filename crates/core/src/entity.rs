@@ -83,7 +83,9 @@ impl EntityDefinition {
         );
         let initial_speed_mps = number(params, "speed", 0.0)?;
         if initial_speed_mps > 0.0 && initial_velocity_world_mps == Vec3::zeros() {
-            // C++ applies initial speed before setting the initial quaternion.
+            // Matches C++ for now, though we don't consider it correct: scalar speed is
+            // applied along world X before the initial attitude, so an aircraft facing north
+            // can start moving east. Motion models that rebuild velocity hide this.
             initial_velocity_world_mps = Vec3::new(initial_speed_mps, 0.0, 0.0);
         }
 

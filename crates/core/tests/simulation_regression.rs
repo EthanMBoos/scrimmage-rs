@@ -31,6 +31,7 @@ fn run_mission(name: &str, threads: usize) -> Result<MissionOutput> {
 fn mission_output_is_independent_of_worker_count() -> Result<()> {
     for mission in [
         "straight-no-gui.xml",
+        "fixed-wing-6dof.xml",
         "test_missions/straight_cpu.xml",
         "test_missions/straight_cpu_mul.xml",
         "test_missions/straight_cpu_threaded.xml",

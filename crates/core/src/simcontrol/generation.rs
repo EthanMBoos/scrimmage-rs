@@ -44,7 +44,8 @@ impl Simulation {
             let definition = &self.definitions[definition_index];
             let spawn = &definition.spawn;
             let origin_world_m = spawn.position_world_m;
-            // C++ writes each sampled heading back into the entity template.
+            // Matches C++ for now, though we don't consider it correct: each sampled heading
+            // becomes the mean for the next spawn (a random walk, not independent samples).
             // Keep that legacy evolution in generator state, not validated configuration.
             let heading_world_deg = legacy_decimal_roundtrip(self.rng.normal(
                 self.generators[definition_index].heading_world_deg,
@@ -114,7 +115,8 @@ impl Simulation {
 }
 
 fn legacy_decimal_roundtrip(value: f64) -> f64 {
-    // C++ sends spawn coordinates through std::to_string before parsing them again.
+    // Matches C++ for now, though it exists only for parity: C++ sends spawn
+    // coordinates through std::to_string before parsing them again.
     format!("{value:.6}")
         .parse()
         .expect("formatted finite number must parse")

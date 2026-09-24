@@ -17,6 +17,7 @@ robotics simulation. It is both:
 | Plugin design | Seven categories, with runtime shared-library loading. | Same seven roles; ordinary Rust structs compiled into the application. No runtime loading. |
 | Visualization | VTK viewer and plugin drawing. | Rerun map, debug panels, recordings, and looping replay. No VTK or general plugin drawing yet. |
 | Parallel execution | Legacy C++ threading implementation. | Entity-owned state and barriers between phases; selected missions match at 1/2/8 workers. |
+| Preliminary performance | Single-thread reference. | C++-mimic baseline: 1.24–1.36× faster at one worker for two 128-aircraft workloads; eight workers slower. Same emulated Linux container, not a general speed claim. [Benchmark](reference/benchmark.py). |
 | Mission input | XML and the wider legacy template/parameter surface. | Curated XML support today. Typed composition and YAML/templates are later work. |
 | Communication / spawning | Typed pub/sub plus legacy protobuf/string-map spawn commands. | Typed in-process pub/sub and scheduled spawning. No legacy spawn commands; connection-triggered spawning is planned. |
 | Integrations / GPU | ROS 1, ArduPilot, JSBSim, and legacy OpenCL paths. | None implemented yet. ROS 1/2, ArduPilot UDP, and optional Burn are planned; JSBSim is verification-only. |
@@ -152,7 +153,7 @@ python3 reference/reference_check.py
 ```
 
 The [reference workflow](reference/README.md) builds SCRIMMAGE's upstream slim
-dependency image and checks six missions, worker-count equality, and recording
+dependency image and checks seven missions, worker-count equality, and recording
 on/off equality. Historical native macOS checks passed; the Docker checks also
 expose Linux compatibility gaps, including standard-library random behavior.
 Direct C++ event-stream comparison is not implemented. To compare saved runs,
