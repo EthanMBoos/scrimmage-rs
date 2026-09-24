@@ -153,7 +153,7 @@ python3 reference/reference_check.py
 ```
 
 The [reference workflow](reference/README.md) builds SCRIMMAGE's upstream slim
-dependency image and checks seven missions, worker-count equality, and recording
+dependency image and checks eight missions, worker-count equality, and recording
 on/off equality. Historical native macOS checks passed; the Docker checks also
 expose Linux compatibility gaps, including standard-library random behavior.
 Direct C++ event-stream comparison is not implemented. To compare saved runs,

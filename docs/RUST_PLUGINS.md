@@ -169,6 +169,12 @@ schemas, and unported plugins remain in sibling `../scrimmage`, branch
 The engine validates connections before execution and supplies `PluginIo`
 to autonomy, controller, and motion updates.
 
+Port names are owned strings, so configuration can determine channel names/count:
+`Port::new(format!("motor_{index}"), Unit::RadiansPerSecond, Frame::None)`.
+String literals work too. `Port` is `Clone` but not `Copy`, so it cannot be a
+`const`: construct declarations in `ports`, and clone only when the same
+declaration is needed for both an input and an output.
+
 ```text
 Autonomy outputs -> Controller chain -> MotionModel inputs
 ```

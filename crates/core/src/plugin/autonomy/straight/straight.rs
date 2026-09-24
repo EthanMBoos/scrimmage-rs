@@ -12,9 +12,9 @@ use crate::plugin::{
     AgentContext, Autonomy, Frame, Plugin, PluginIo, PluginParams, Port, Ports, Unit, Update,
 };
 
-const ALTITUDE: Port = Port::new("desired_altitude", Unit::Meters, Frame::World);
-const SPEED: Port = Port::new("desired_speed", Unit::MetersPerSecond, Frame::None);
-const HEADING: Port = Port::new("desired_heading", Unit::Radians, Frame::World);
+const ALTITUDE: &str = "desired_altitude";
+const SPEED: &str = "desired_speed";
+const HEADING: &str = "desired_heading";
 
 pub struct StraightConfig {
     speed_mps: f64,
@@ -60,9 +60,9 @@ impl Plugin for Straight {
 
     fn ports(_config: &StraightConfig) -> Ports {
         Ports::default()
-            .output(ALTITUDE)
-            .output(SPEED)
-            .output(HEADING)
+            .output(Port::new(ALTITUDE, Unit::Meters, Frame::World))
+            .output(Port::new(SPEED, Unit::MetersPerSecond, Frame::None))
+            .output(Port::new(HEADING, Unit::Radians, Frame::World))
     }
 }
 
@@ -119,9 +119,9 @@ impl Autonomy for Straight {
         let desired_heading_world_rad =
             math::angle_2pi(velocity_world_mps.y.atan2(velocity_world_mps.x));
 
-        io.write(ALTITUDE.name, self.goal_world_m.z)?;
-        io.write(SPEED.name, desired_speed_mps)?;
-        io.write(HEADING.name, desired_heading_world_rad)?;
+        io.write(ALTITUDE, self.goal_world_m.z)?;
+        io.write(SPEED, desired_speed_mps)?;
+        io.write(HEADING, desired_heading_world_rad)?;
         Ok(Update::Applied)
     }
 }

@@ -36,9 +36,13 @@ The upstream dependency Dockerfile itself clones GitHub for its setup scripts;
 that is distinct from the archived source used for the reference executable.
 
 [Dockerfile](Dockerfile) disables optional VTK, gRPC, OpenCV, ROS, and GPU build
-paths and builds the executable plus the twelve C++ plugins needed by the current
+paths and builds the executable plus the thirteen upstream C++ plugins needed by the current
 matrix. This is a headless comparison build, not verification of the full C++
 plugin catalog. No C++ simulator logic or random generator is patched.
+Multirotor additionally uses our small `fixtures/MotorSpeeds.cpp` command driver:
+the old upstream PID writes a different control interface. This fixture supplies
+constant motor speeds to the unchanged upstream model; it is not an autopilot.
+Fixture source hashes are recorded alongside the upstream source provenance.
 `VTK_FOUND=OFF` is set explicitly because upstream CMake expands that variable
 inside conditionals even when VTK discovery is disabled.
 
@@ -57,9 +61,18 @@ dedicated host output mount; they are removed after the run.
 | `verification/noisy-state-bias.xml` | NoisyState deterministic bias/attitude equations and belief feedback, without stochastic sequence differences |
 | `networks-local-global.xml` | Boundary response over GlobalNetwork, local own-state feedback, ground removal and metrics |
 | `fixed-wing-6dof.xml` | Aerodynamic flight, tilted/northbound attitude, nonzero rates and wind |
+| `multirotor.xml` | Quad hover, tilted flight, unequal motor speeds and a six-rotor configuration |
 
 Each case runs C++ headless and single-threaded. Rust runs with 1, 2, and 8
 workers without Rerun, plus an eight-worker headless Rerun recording.
+
+For just the Multirotor port, run
+`python3 reference/reference_check.py --mission missions/multirotor.xml` and
+`cargo test -p scrimmage-core multirotor`. The initial four-vehicle check compared
+4,001 frames / 16,004 states: maximum position error 8.63e-15 m, velocity error
+4.82e-13 m/s, matching summaries, and byte-identical Rust worker/recording outputs.
+This establishes the selected open-loop cases, not a working upstream autopilot
+or external-force/landing integration. Model-specific quirks are commented inline.
 
 - C++/Rust frames and team summaries use `reference/compare.py`.
 - Rust frames, events, and summaries must be byte-identical across worker counts

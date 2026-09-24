@@ -110,7 +110,7 @@ impl CompiledStack {
                         output.name
                     );
                 } else {
-                    upstream.push(*output);
+                    upstream.push(output.clone());
                 }
             }
         }
@@ -375,7 +375,7 @@ impl PluginStack {
                     .io
                     .outputs
                     .iter()
-                    .map(|(name, value)| (*name, *value)),
+                    .map(|(name, value)| (name.clone(), *value)),
             );
         }
         Ok(())

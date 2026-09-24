@@ -163,9 +163,9 @@ mod tests {
         let mut io = PluginIo::new(&AircraftPidController::ports(&config));
         io.receive(
             &[
-                ("desired_heading", 0.0),
-                ("desired_altitude", 0.0),
-                ("desired_speed", 1.0),
+                ("desired_heading".into(), 0.0),
+                ("desired_altitude".into(), 0.0),
+                ("desired_speed".into(), 1.0),
             ]
             .into(),
         )?;

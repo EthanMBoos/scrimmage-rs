@@ -30,6 +30,7 @@ MISSIONS = (
     "verification/noisy-state-bias.xml",
     "networks-local-global.xml",
     "fixed-wing-6dof.xml",
+    "multirotor.xml",
 )
 OUTPUT_FILES = ("frames.bin", "events.json", "summary.csv")
 
@@ -145,11 +146,15 @@ def build_reference(args, output):
             "git", "-C", str(args.source), "archive", "--format=tar", "--prefix=source/", commit,
         ], stdout=archive, check=True)
     shutil.copyfile(ROOT / "reference/Dockerfile", context / "Dockerfile")
+    # Only the constant-command driver is ours; Multirotor remains upstream code.
+    shutil.copytree(ROOT / "reference/fixtures", context / "fixtures")
+    fixture_hashes = {path.name: sha256(path) for path in sorted((context / "fixtures").iterdir())}
     write_json(output / "source.json", {
         "branch": BRANCH, "commit": commit, "source_checkout": str(args.source),
         "source_archive_sha256": sha256(context / "source.tar"),
         "dependency_dockerfile_sha256": sha256(dependency_file),
         "build_dockerfile_sha256": sha256(context / "Dockerfile"),
+        "fixture_sha256": fixture_hashes,
     })
     dependency_tag = f"scrimmage-rs-reference-deps:{sha256(dependency_file)[:12]}"
     image_tag = f"scrimmage-rs-reference:{commit[:12]}"
@@ -181,6 +186,7 @@ def build_reference(args, output):
         "dependency_image": dependency_id.read_text().strip(),
         "build_dockerfile_sha256": sha256(context / "Dockerfile"),
         "image": image, "platform": PLATFORM,
+        "fixture_sha256": fixture_hashes,
         "image_architecture": inspect["Architecture"],
     }
 

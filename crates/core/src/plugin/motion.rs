@@ -2,6 +2,9 @@
 #[path = "motion/fixed_wing_6dof/fixed_wing_6dof.rs"]
 mod fixed_wing_6dof;
 pub use fixed_wing_6dof::FixedWing6Dof;
+#[path = "motion/multirotor/multirotor.rs"]
+mod multirotor;
+pub use multirotor::Multirotor;
 #[path = "motion/simple_aircraft/simple_aircraft.rs"]
 mod simple_aircraft;
 pub use simple_aircraft::SimpleAircraft;

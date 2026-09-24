@@ -21,7 +21,7 @@ impl Plugin for SingleIntegratorControllerSimple {
         let mut ports = Ports::default();
         for name in ["velocity_x", "velocity_y", "velocity_z"] {
             let port = Port::new(name, Unit::MetersPerSecond, Frame::World);
-            ports = ports.input(port).output(port);
+            ports = ports.input(port.clone()).output(port);
         }
         ports
     }

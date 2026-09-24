@@ -15,7 +15,7 @@ impl Plugin for ScaleSpeed {
     }
     fn ports(_: &f64) -> Ports {
         let speed = Port::new("speed", Unit::MetersPerSecond, Frame::World);
-        Ports::default().input(speed).output(speed)
+        Ports::default().input(speed.clone()).output(speed)
     }
 }
 impl Controller for ScaleSpeed {

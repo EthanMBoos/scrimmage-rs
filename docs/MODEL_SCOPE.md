@@ -1,15 +1,15 @@
 # Selected v1 models
 
 Keep a useful student research workflow, not a large compatibility catalog.
-The stock registry currently contains 17 models across all seven roles. Other
+The stock registry currently contains 19 models across all seven roles. Other
 compiled Rust models can register through the same interfaces without editing
 the simulation loop. No runtime library loading is planned.
 
 | Role | Selected now | Later / excluded and why |
 | --- | --- | --- |
 | Autonomy | Straight; Rust-native WaypointFollower | More research behaviors when needed. MotorSchemas/nested plugin composition and GraphvizFSM are not prerequisites for navigation. Legacy protobuf spawning and camera windows are excluded. |
-| Controller | SimpleAircraftControllerPID; SingleIntegratorControllerSimple; AircraftPIDController | SimpleAircraft PID roll/glide-slope modes deferred; unsupported modes are errors. AircraftPIDController supplies the nested loops for FixedWing6DOF. |
-| Motion | SimpleAircraft; SingleIntegrator; FixedWing6DOF | Other models follow an actual experiment. FixedWing6DOF limitations are commented beside its equations; JSBSim is an offline verification candidate, not a runtime plugin. |
+| Controller | SimpleAircraftControllerPID; SingleIntegratorControllerSimple; AircraftPIDController; Rust-only MotorSpeeds | SimpleAircraft PID roll/glide-slope modes deferred; unsupported modes are errors. MotorSpeeds supplies constant rotor commands for testing, not stabilization or navigation. |
+| Motion | SimpleAircraft; SingleIntegrator; FixedWing6DOF; Multirotor | Flight-model limitations are commented beside their equations. Multirotor retains C++ behavior; external-force contact and acceleration sensor access are not exposed. JSBSim is an offline verification candidate, not a runtime plugin. |
 | Sensor | NoisyState; NoisyPosition (Rust-only teaching example) | Target/contact detection, cameras, and other sensors need a concrete observation contract and research use. Not porting the entire catalog. |
 | Interaction | SimpleCollision; GroundCollision; Boundary; Rust-native WaypointBroadcast | Physics-engine collisions, richer geometry, and games/scoring environments deferred. No integration-specific spawning here. |
 | Network | GlobalNetwork; LocalNetwork | Range-based networks/spatial optimization later. Legacy delay modes remain rejected; compiled networks can use explicit delay/loss. No OpenCL path. |

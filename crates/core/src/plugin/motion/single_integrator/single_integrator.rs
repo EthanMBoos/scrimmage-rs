@@ -111,9 +111,9 @@ mod tests {
             let mut io = PluginIo::new(&SingleIntegrator::ports(&config));
             io.receive(
                 &[
-                    ("velocity_x", desired.x),
-                    ("velocity_y", desired.y),
-                    ("velocity_z", desired.z),
+                    ("velocity_x".into(), desired.x),
+                    ("velocity_y".into(), desired.y),
+                    ("velocity_z".into(), desired.z),
                 ]
                 .into(),
             )?;

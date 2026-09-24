@@ -20,15 +20,21 @@ pub enum Frame {
 }
 
 /// Names are extensible; adding a channel does not require an engine enum change.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Owned names also allow configured channels such as a vehicle's motor_0..motor_N.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Port {
-    pub name: &'static str,
+    pub name: String,
     pub unit: Unit,
     pub frame: Frame,
 }
+
 impl Port {
-    pub const fn new(name: &'static str, unit: Unit, frame: Frame) -> Self {
-        Self { name, unit, frame }
+    pub fn new(name: impl Into<String>, unit: Unit, frame: Frame) -> Self {
+        Self {
+            name: name.into(),
+            unit,
+            frame,
+        }
     }
 }
 
@@ -51,7 +57,7 @@ impl Ports {
             let mut names = std::collections::BTreeSet::new();
             for port in ports {
                 ensure!(
-                    !port.name.is_empty() && names.insert(port.name),
+                    !port.name.is_empty() && names.insert(&port.name),
                     "empty or duplicate port {}",
                     port.name
                 );
@@ -81,7 +87,7 @@ impl Ports {
     }
 }
 
-pub(crate) type Signals = BTreeMap<&'static str, f64>;
+pub(crate) type Signals = BTreeMap<String, f64>;
 
 /// Inputs and outputs are distinct, including when a controller reuses a channel name.
 /// Values persist when a rate-limited plugin does not execute.
@@ -92,8 +98,16 @@ pub struct PluginIo {
 impl PluginIo {
     pub(crate) fn new(ports: &Ports) -> Self {
         Self {
-            inputs: ports.inputs.iter().map(|port| (port.name, 0.0)).collect(),
-            outputs: ports.outputs.iter().map(|port| (port.name, 0.0)).collect(),
+            inputs: ports
+                .inputs
+                .iter()
+                .map(|port| (port.name.clone(), 0.0))
+                .collect(),
+            outputs: ports
+                .outputs
+                .iter()
+                .map(|port| (port.name.clone(), 0.0))
+                .collect(),
         }
     }
     pub fn read(&self, name: &str) -> Result<f64> {
@@ -116,6 +130,29 @@ impl PluginIo {
                 .get(name)
                 .with_context(|| format!("missing connected input '{name}'"))?;
         }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Frame, PluginIo, Port, Ports, Signals, Unit};
+
+    #[test]
+    fn configured_names_connect_and_missing_channels_are_rejected() -> anyhow::Result<()> {
+        let name = format!("motor_{}", 5);
+        let port = Port::new(name, Unit::RadiansPerSecond, Frame::None);
+        let inputs = Ports::default().input(port.clone());
+        inputs.connect(&[port], "Multirotor")?;
+        let error = inputs.connect(&[], "Multirotor").unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("missing upstream output 'motor_5'")
+        );
+        let mut io = PluginIo::new(&inputs);
+        io.receive(&Signals::from([("motor_5".into(), 680.0)]))?;
+        assert_eq!(io.read("motor_5")?, 680.0);
         Ok(())
     }
 }
