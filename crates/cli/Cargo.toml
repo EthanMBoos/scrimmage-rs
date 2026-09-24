@@ -1,0 +1,20 @@
+[package]
+name = "scrimmage-rs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "scrimmage"
+path = "src/main.rs"
+
+[dependencies]
+scrimmage-core = { path = "../core" }
+anyhow.workspace = true
+clap.workspace = true
+serde_json.workspace = true
+serde.workspace = true
+rerun = { version = "=0.36.2", default-features = false, features = ["sdk"] }
+
+[dev-dependencies]
+tempfile = "3"

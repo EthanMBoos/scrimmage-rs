@@ -1,0 +1,335 @@
+# Writing Rust plugins
+
+Use [PLUGIN_DEVELOPMENT.md](PLUGIN_DEVELOPMENT.md) for the SCRIMMAGE design.
+This document maps that design to the current Rust API; it does not redefine
+the original documentation or claim that every legacy service is ported.
+
+For engine navigation, see [SOURCE_LAYOUT.md](SOURCE_LAYOUT.md). Category
+interfaces live in named framework modules; concrete built-ins
+live only under `crates/core/src/plugin/<category>/`. The public authoring
+imports remain `scrimmage_core::plugin::*`; the source moves do not require
+changes to an external plugin project.
+
+## Seven extension points
+
+| Type | Owned by | Built-in implementation |
+| --- | --- | --- |
+| Autonomy | Entity | [Straight](../crates/core/src/plugin/autonomy/straight/straight.rs) |
+| Controller | Entity | [SimpleAircraftControllerPID](../crates/core/src/plugin/controller/simple_aircraft_pid/simple_aircraft_pid.rs) |
+| MotionModel | Entity | [SimpleAircraft](../crates/core/src/plugin/motion/simple_aircraft/simple_aircraft.rs) |
+| Sensor | Entity | [NoisyState](../crates/core/src/plugin/sensor/noisy_state/noisy_state.rs); [NoisyPosition](../crates/core/src/plugin/sensor/noisy_position/noisy_position.rs) (Rust-only illustration) |
+| Interaction | Simulation | [SimpleCollision](../crates/core/src/plugin/interaction/simple_collision/simple_collision.rs) |
+| Network | Simulation | [LocalNetwork](../crates/core/src/plugin/network/local_network/local_network.rs), [GlobalNetwork](../crates/core/src/plugin/network/global_network/global_network.rs) |
+| Metrics | Simulation | [SimpleCollisionMetrics](../crates/core/src/plugin/metrics/simple_collision_metrics/simple_collision_metrics.rs) |
+
+Each implementation is an ordinary struct containing its own state and model code.
+No plugin author needs to implement the engine's erased adapters, manage
+threads, take locks, or edit the simulator.
+
+Inside the engine, each category has its own constructor catalog and typed slots.
+Updates call the stored plugin directly; there is no all-category instance enum
+to check each tick. The internal forwarding traits remain, and the public
+plugin traits and registration methods are unchanged.
+
+## Where to put your model code
+
+For growing autonomy implementations, see
+[Fighting autonomy plugin bloat](FIGHTING_AUTONOMY_PLUGIN_BLOAT.md). It describes
+ordinary component and state composition without adding another plugin framework.
+
+Every built-in follows the same layout: imports and configuration, owned state,
+`impl Plugin`, the category implementation, private helpers, then tests. Read
+the category's `step` first to understand the algorithm; `configure` explains
+how mission parameters reach it. See [Rust style](RUST_STYlE.md#familiar-plugin-authoring)
+for the layout and ownership rules.
+
+These are the seven working patterns; the linked built-ins above contain the
+actual code rather than a second set of templates to keep synchronized:
+
+| Category | What belongs in its update | Regression coverage |
+| --- | --- | --- |
+| Autonomy | Read current state/observations, calculate desired commands, write ports. | Straight configuration test; aircraft missions; seven-category contract test. |
+| Controller | Read desired/current state, run owned control loops, write actuator commands. | Named XML gain mapping and PID equation tests; aircraft missions. |
+| MotionModel | Read actuator commands, integrate owned model state, update mutable truth. | Level-flight equation test; aircraft and substep missions. |
+| Sensor | Read committed truth, construct a measurement, apply effects, queue output. | NoisyPosition zero-noise/bias and fixed-seed draw-order tests; sensor visibility contract. |
+| Interaction | Inspect world entities, apply physical effects, emit events. | Straight collision/removal mission; same-tick interaction/metrics contract. |
+| Network | Decide reachability and delivery for each link through `context.route`. | Built-in delay validation; local/global routing and custom delay/loss tests. |
+| Metrics | Subscribe during initialization, consume events during step, report team totals. | Team aggregation unit test; mission summaries; independent subscriber contract. |
+
+The engine supplies short-lived contexts; do not store them in the plugin.
+Store only the plugin's own persistent model state and configuration. A motion
+model is allowed to update truth, while a sensor borrows truth read-only.
+Messages and observations must follow their documented delivery paths.
+
+For C++ developers: the plugin struct holds what used to be class members;
+`impl Plugin` supplies common lifecycle operations; `impl Sensor` (or another
+category) supplies the specialized update. This is composition through traits,
+not a duplicated inheritance hierarchy. `Result<Update>` distinguishes an
+operation failure (including numerical failure) from an applied or stop-requesting update.
+
+Straight uses a named configuration struct. LocalNetwork and GlobalNetwork are
+stateless and use `Config = ()`; configuration still rejects unsupported delay modes.
+Call `configure` and pass its result to `new`. The controller parses legacy
+`[P, I, D, integral band]` XML values into named `PidGains`; angular PID updates
+still use radians and convert the legacy degree-valued band once at construction.
+
+Downstream plugins can import `Pid`, `PidGains`, `EulerAngles`, `Quaternion`,
+`Vec3`, and `rk4` directly from `scrimmage_core`. Use `Quaternion::from_euler`
+for attitude construction and `rotate_body_to_world` to rotate vectors.
+
+## Add a plugin
+
+1. Use the built-in for your category as a reference. Add the ported plugin's
+   named `<plugin>.rs` implementation and XML defaults under
+   `plugin/<category>/<plugin>/`. Declare and re-export it in the named category
+   module, following the example below.
+2. Implement `Plugin::configure` to parse and validate XML parameters into a
+   typed configuration. Implement `Plugin::new` to construct independent
+   mutable state for each instance.
+3. Implement your category's `step`. Use optional `initialize` for initial
+   state and subscriptions, and `Plugin::close` for shutdown.
+4. Register the type with `register_autonomy`, `register_controller`,
+   `register_motion`, `register_sensor`, `register_interaction`,
+   `register_network`, or `register_metrics` in `plugin_manager/builtins.rs`
+   for a bundled plugin.
+5. Reference that registration name in the mission.
+
+[builtins.rs](../crates/core/src/plugin_manager/builtins.rs) shows all seven
+registration categories. Missions select the registered names:
+
+```xml
+<entity_interaction>SimpleCollision</entity_interaction>
+<network>GlobalNetwork</network>
+<metrics>SimpleCollisionMetrics</metrics>
+<!-- Autonomy, controller, motion_model, and sensor belong inside entity. -->
+```
+
+Start with `PluginRegistry::with_builtins()` and add your project types.
+A bare `PluginRegistry::default()` is deliberately empty; it must also register
+the `GlobalNetwork` used by simulator events. As in C++, the mission gets an
+implicit GlobalNetwork when it does not explicitly list one.
+
+The public registry is still covered by
+[plugin_contracts.rs](../crates/core/tests/plugin_contracts.rs). Its supporting
+models are test fixtures, not a separate application or a prescribed project
+layout. The intended later top-level application API is described in
+[LIBRARY_FIRST_REFACTOR.md](LIBRARY_FIRST_REFACTOR.md) and remains deferred.
+
+## Plugin files and defaults
+
+Each built-in has one directory containing its implementation and defaults:
+
+```text
+crates/core/src/plugin/motion/simple_aircraft/
+    simple_aircraft.rs   # Rust struct, configuration, and motion equations
+    SimpleAircraft.xml   # SCRIMMAGE mission-facing defaults
+```
+
+This folds C++'s separate header/implementation and XML directories into one
+Rust plugin directory. All seven categories follow this layout. The small
+category file `plugin/motion.rs` loads it explicitly:
+
+```rust,ignore
+#[path = "motion/simple_aircraft/simple_aircraft.rs"]
+mod simple_aircraft;
+pub use simple_aircraft::SimpleAircraft;
+```
+
+The path is relative to the category file. The logical module remains
+`plugin::motion::simple_aircraft`, and the public type remains
+`scrimmage_core::plugin::motion::SimpleAircraft`. No extra wrapper module or
+duplicate implementation is needed. Keep category interfaces in named framework
+files such as `motion.rs`, and registrations in
+`plugin_manager/builtins.rs`; neither belongs in the model equations.
+
+`SCRIMMAGE_PLUGIN_PATH` directories are searched first, in order, followed by
+`crates/core/src/plugin` under the supplied repository root. Search is recursive;
+the first `PluginName.xml` found wins. XML defaults are overlaid by `param_common`
+values, then mission attributes. A registered type without a defaults XML file
+uses the fallbacks in its `configure` implementation.
+
+For an external plugin, keep `PluginName.xml` beside its Rust module and put
+that directory on `SCRIMMAGE_PLUGIN_PATH`. Registration and public imports are
+unchanged. This only discovers XML: custom code must already be compiled into
+the caller and registered there; the stock command does not load user Rust crates.
+
+The ported C++ plugins retain their mission defaults, including `<library>`
+metadata. Rust currently selects the registered type by the mission's plugin
+name; it does not load that C++ library. Plugins are linked as Rust code;
+runtime shared-library loading is intentionally out of scope. NoisyPosition has
+its own Rust-example defaults and is not a C++ sensor port.
+
+Only implemented plugins ship defaults here. Reference headers, build files,
+schemas, and unported plugins remain in sibling `../scrimmage`, branch
+`Ubuntu-24.04`; do not recreate a parallel reference tree in this repo.
+
+## Control signals and state
+
+`Plugin::ports` declares named input/output channels with units and frames.
+The engine validates connections before execution and supplies `PluginIo`
+to autonomy, controller, and motion updates.
+
+```text
+Autonomy outputs -> Controller chain -> MotionModel inputs
+```
+
+See `SimpleAircraftControllerPID` for desired heading/altitude/speed inputs
+and throttle, roll-rate, and pitch-rate outputs.
+Autonomies/controllers receive read-only state; motion receives mutable truth.
+Interactions receive the entities after motion and sensors, and can update
+physical state or health. Structural creation/removal remains engine-owned.
+
+`AgentContext.state` reads the entity's owned belief, falling back to read-only
+truth when no sensor has installed an estimate. Sensors call
+`context.set_belief(state)` with an owned value or `context.clear_belief()` to
+restore ideal feedback. Both autonomy and controllers use this same state.
+Motion still writes truth; frames, physical interactions, and explicitly named
+`contacts_truth` still expose truth. This does not hide the world from every
+legacy autonomy: it removes mutable truth aliasing from the belief path.
+
+Belief persists between sensor samples. Multiple sensor writers execute in XML
+order; the last update wins. This is not sensor fusion. Sensor initialization
+runs before motion, controllers, and autonomy, matching C++'s initialization
+order. During simulation, sensors still sample after all motion substeps; the
+next autonomy/controller phase sees the updated estimate.
+
+### NoisyState
+
+`NoisyState` ports the legacy own-state noise equations and XML parameters.
+It detaches initial belief, then samples post-motion truth, updates belief, and
+publishes `StateWithCovariance` on `LocalNetwork`. Straight prefers the newest
+delivered message; when none arrives, it uses current belief. The PID reads
+belief directly, not the network queue. Delaying/dropping LocalNetwork messages
+therefore does not delay the direct belief update.
+
+Include `<network>LocalNetwork</network>` when using Straight or NoisyState.
+Straight now subscribes to local state messages even when no sensor publishes.
+Missing configured networks remain errors; they are not silently created.
+
+Legacy details retained deliberately:
+
+- Each `pos_noise_0..2`, `vel_noise_0..2`, and `orient_noise_0..2` value is
+  `mean standard_deviation`, in meters, meters/second, and radians respectively.
+- Attitude noise right-multiplies body-axis roll, pitch, and yaw rotations.
+- The C++ message leaves angular velocity zero and covariance equal to a 3x3
+  identity matrix. That covariance is **not** a calibrated sensor uncertainty.
+- Samples use the existing Rust per-sensor RNG, keyed by mission seed, entity
+  ID, and sensor instance. Draws interleave position/velocity per axis, followed
+  by roll/pitch/yaw, including zero-noise draws. This is not C++ RNG-sequence parity.
+
+Try `missions/noisy-state.xml`. Its two aircraft have independent sensor streams.
+The separate `verification/noisy-state-bias.xml` fixes standard deviations at
+zero to compare the retained equations and feedback against C++ independently
+of random-number generation. NoisyPosition remains a distinct Rust illustration.
+
+## Messages
+
+Each plugin instance owns independent subscriptions, an incoming queue, and an
+outgoing queue. Message data is shared immutably for multicast, not plugin state.
+The following excerpt uses the `Population` message and `ExampleNetwork` from
+the plugin contract test fixtures, not names registered by the stock command:
+
+```rust
+// initialize:
+context.messages.subscribe::<Population>("ExampleNetwork", "population")?;
+
+// publisher step:
+context.messages.publish("ExampleNetwork", "population", Population { entity_count: 8 })?;
+
+// subscriber step:
+for message in context.messages.receive::<Population>("ExampleNetwork", "population")? {
+    self.entity_samples += message.value.entity_count;
+}
+```
+
+Receive explicitly drains this subscriber's delivered queue at its update;
+it does not drain anyone else's queue. This is the Rust equivalent of processing
+messages in the step body, not a claim that C++ callback registration is ported.
+Each message includes sender identity, publication time, and actual delivery time.
+Wrong message types and unconfigured network names are errors.
+
+Queues have fixed message-count limits in `pubsub/messages.rs`: 1,024 outgoing
+publications per plugin, 1,024 unread messages per subscriber/channel, and 65,536
+pending deliveries per network (including fan-out staged in the current phase).
+Overflow returns an error and terminates the run with normal cleanup; it is not
+silent loss or backpressure. A failing phase is not rolled back. These are simple
+research defaults, not byte limits or legacy queue-policy compatibility. Drain
+subscriptions you create; a deliberately slow subscriber can fill its own queue.
+
+A network implements `step` and calls `context.route` once. Its decision
+function receives sender/receiver identities, topic, time, and world contacts,
+then returns `Delivery::Drop` or `Delivery::After { delay_s }`.
+Zero delay delivers during the current network phase; positive delay waits
+until a later phase, even if the publisher goes silent. A network can use its
+own mailbox through `context.messages()`.
+
+LocalNetwork connects plugins on the same entity; GlobalNetwork connects all
+endpoints. The source's nonnegative `comm_delay` queue semantics and stochastic
+delay are not ported by these built-ins and are rejected explicitly.
+Custom networks have the explicit delay/loss behavior above.
+
+`SensorContext::publish_local` is a separate convenience for latest-value
+entity-local observations. It bypasses simulated network policies; use the
+message API when communication behavior matters.
+
+## Execution and lifecycle
+
+```text
+Generate entities
+-> all autonomies
+-> all controller substeps
+-> all motion substeps
+-> sensors
+-> interactions
+-> networks / delivery
+-> metrics
+-> remove inactive entities
+-> output / advance time
+```
+
+Entity phases join all worker tasks before the next phase. Cross-entity reads
+use committed snapshots. Interactions, networks, and metrics run on the
+coordinator; plugin state is never shared mutably between workers.
+
+Interactions also run once before the first tick, matching the reference.
+Networks run in name order. Metrics can consume interaction messages within the
+same tick; autonomy cannot see post-motion sensor deliveries until its next step.
+Autonomy/controller/sensor loop rates retain outputs when updates are skipped.
+World-level plugins run each phase as in the C++ reference source.
+
+Return `Update::Applied` or `Update::Stop`; use `Result::Err` with an explanation
+when the operation failed, including nonfinite model state. A normal plugin stop
+finishes the current tick, including networks and metrics, then emits terminal
+state. This is an intentional Rust contract, not C++ early-exit equivalence.
+Removal occurs after that tick's delivery/metrics; removed entities receive no
+later messages, including already scheduled deliveries. Pending future messages
+are not flushed at termination. `EntityPresentAtEnd` is written to the event log
+during finalization, not delivered as an extra metrics/network phase.
+Close is called once on removal, terminal completion, failure, or dropping the
+simulation. Close errors/panics do not prevent other plugins from closing.
+Initialization failure also closes every constructed plugin in that entity;
+`close` must tolerate incomplete initialization. Ordinary `Result` failures name
+the responsible plugin; caught panics may have only phase/entity context. Do not
+rely on recovery from an aborted process or a panicking constructor.
+
+Metrics return a `MetricReport` containing ordered headers and per-team values
+and scores. Multiple metrics instances are supported. CSV output sums team
+scores and qualifies duplicate column names with the plugin instance identity.
+`Simulation::metric_reports()` exposes each report separately.
+
+## What remains
+
+See [MODEL_SCOPE.md](MODEL_SCOPE.md) for the selected aircraft, world, and waypoint
+models, their options, and deliberate limits. [EVIDENCE.md](EVIDENCE.md) provides
+runnable checks. [TODO.md](TODO.md) lists current priorities. Legacy delay
+behavior, additional sensor models, and plugin debug
+geometry need further work. Readiness, services, runtime parameters, and
+callbacks should be implemented where selected models/integrations need them,
+not copied as an unconditional framework backlog.
+
+Compiled downstream Rust plugins remain supported. Runtime shared-library
+discovery/loading and legacy protobuf/string-map spawning are explicitly excluded.
+Burn and optional ROS 1/2 and ArduPilot adapters are future work, not current
+capabilities. JSBSim is planned only as offline flight-model reference tooling,
+not a production plugin or FFI integration. XML/template coverage is partial;
+a YAML frontend and typed runtime spawn requests are not implemented.
