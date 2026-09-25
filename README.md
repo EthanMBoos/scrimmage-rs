@@ -57,7 +57,8 @@ and `plugin_manager`; see [docs/SOURCE_LAYOUT.md](docs/SOURCE_LAYOUT.md).
 
 The current built-ins cover aircraft and point-agent navigation, PID control,
 boundary response, air/ground collisions and scoring, local/global messages,
-and NoisyState sensing with separate belief feedback. Try
+NoisyState sensing with separate belief feedback, NoisyContacts measurements,
+and a SphereNetwork/AuctionAssign radio exchange. Try
 `missions/networks-local-global.xml` for the aircraft/sensor/world example or
 `missions/waypoints-point-agents.xml` for the smallest navigation model.
 The [mission guide](missions/README.md) and [model selection](docs/MODEL_SCOPE.md)
@@ -123,6 +124,13 @@ compatibility limits are documented in [docs/REFERENCE_NOTES.md](docs/REFERENCE_
 The copied [architecture](docs/ARCHITECTURE.md), [dataflow](docs/DATA_FLOW.md),
 [plugin](docs/PLUGIN_DEVELOPMENT.md), and [mission](docs/MISSION_CONFIG.md)
 guides describe the original C++ design.
+
+## Documentation
+
+The student-facing book in [`book/`](book/) has a first-plugin tutorial and
+pages on coordinate frames, belief vs truth, and writing plugins. Preview it with
+`mdbook serve book --open` (install with `cargo install mdbook --locked`). The
+`docs/` folder holds the engineering notes, design records, and evidence.
 
 ## Development
 
