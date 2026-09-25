@@ -41,8 +41,8 @@ intentional behavior changes explicit.
 | Integrations | Limit runtime candidates to ROS and ArduPilot. ROS 1 compatibility is required alongside ROS 2; exact message/control coverage is open. | Separate optional adapters and acceptance environments, not a universal bridge or default-build dependencies. |
 | JSBSim | Verification-only: offline reference fixtures for selected Rust flight models. No production plugin, runtime integration, or CXX bridge. | Maintain a small reproducible test corpus, not a JSBSim engine port or general aircraft-XML compatibility. |
 | Mission format | XML for the initial baseline; later migrate to YAML with reusable typed templates and explicit spawn schedules/triggers. | Replace legacy input/generation plumbing after migration coverage exists, not the engine's typed entity lifecycle. No indefinite XML compatibility commitment. |
-| Mission corpus | Curated regression/stress fixtures, not every upstream mission. | Coverage follows shipped models and failure modes, not XML file count. Ten working missions are retained; unported demos stay upstream. |
-| Remaining model catalog | Inventory/prioritize standalone C++ models separately from integrations; final selection is open. | Not copying every mission does **not** automatically mean dropping its useful motion/sensor/autonomy models. |
+| Mission corpus | Curated regression/stress fixtures, not every upstream mission. | Coverage follows shipped models and failure modes, not XML file count. Fourteen working missions are retained; unported demos stay upstream. |
+| Remaining model catalog | Inventory/prioritize standalone C++ models separately from integrations; final selection is open. The [plugin audit](PLUGIN_COVERAGE_AUDIT.md) added NoisyContacts and SphereNetwork + AuctionAssign. | Not copying every mission does **not** automatically mean dropping its useful motion/sensor/autonomy models. |
 
 Already agreed boundaries remain: Rerun instead of VTK, deterministic CPU
 workers, numbered run folders, Python comparison, and `scrimmage run` / `replay`.

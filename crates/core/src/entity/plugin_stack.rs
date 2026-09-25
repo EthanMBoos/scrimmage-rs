@@ -153,16 +153,30 @@ impl CompiledStack {
     }
 
     pub fn instantiate(&self, entity_id: i32, seed: u32) -> PluginStack {
-        let autonomies = self.autonomies.iter().map(Slot::new).collect();
-        let controllers = self.controllers.iter().map(Slot::new).collect();
-        let motion = Slot::new(&self.motion);
+        // Each instance draws from its own stream, keyed by a stable identity.
+        let agent_slots = |category: &str, plugins: &[CompiledPlugin<dyn AgentBehavior>]| {
+            plugins
+                .iter()
+                .enumerate()
+                .map(|(index, plugin)| {
+                    let identity = format!("{category}/{}:{index}", plugin.name);
+                    Slot::new(plugin, PluginRandom::new(seed, entity_id, &identity))
+                })
+                .collect()
+        };
+        let autonomies = agent_slots("autonomy", &self.autonomies);
+        let controllers = agent_slots("controller", &self.controllers);
+        let motion = Slot::new(
+            &self.motion,
+            PluginRandom::new(seed, entity_id, &format!("motion/{}:0", self.motion.name)),
+        );
+        // Sensor identities predate the other categories; keep them so noise is unchanged.
         let sensors = self
             .sensors
             .iter()
             .zip(&self.sensor_identities)
-            .map(|(plugin, identity)| SensorSlot {
-                slot: Slot::new(plugin),
-                random: SensorRandom::new(seed, entity_id, identity),
+            .map(|(plugin, identity)| {
+                Slot::new(plugin, PluginRandom::new(seed, entity_id, identity))
             })
             .collect();
         PluginStack {
@@ -186,15 +200,17 @@ struct Slot<T: ?Sized> {
     io: PluginIo,
     rate: Rate,
     messages: Messages,
+    random: PluginRandom,
 }
 impl<T: ?Sized> Slot<T> {
-    fn new(compiled: &CompiledPlugin<T>) -> Self {
+    fn new(compiled: &CompiledPlugin<T>, random: PluginRandom) -> Self {
         Self {
             name: compiled.name.clone(),
             plugin: (compiled.instantiate)(),
             io: PluginIo::new(&compiled.ports),
             rate: compiled.rate.clone(),
             messages: Messages::default(),
+            random,
         }
     }
     fn mailbox(
@@ -241,6 +257,7 @@ impl Slot<dyn AgentBehavior> {
             observations,
             contacts_truth: &[],
             messages: &mut self.messages,
+            random: &mut self.random,
         };
         self.plugin
             .initialize(&mut context)
@@ -267,6 +284,7 @@ impl Slot<dyn AgentBehavior> {
             observations,
             contacts_truth,
             messages: &mut self.messages,
+            random: &mut self.random,
         };
         self.plugin
             .step(&mut context, &mut self.io)
@@ -274,16 +292,11 @@ impl Slot<dyn AgentBehavior> {
     }
 }
 
-struct SensorSlot {
-    slot: Slot<dyn SensorBehavior>,
-    random: SensorRandom,
-}
-
 pub(crate) struct PluginStack {
     autonomies: Vec<Slot<dyn AgentBehavior>>,
     controllers: Vec<Slot<dyn AgentBehavior>>,
     motion: Slot<dyn MotionBehavior>,
-    sensors: Vec<SensorSlot>,
+    sensors: Vec<Slot<dyn SensorBehavior>>,
     outputs: Signals,
     observations: Observations,
     pending: Observations,
@@ -306,21 +319,20 @@ impl PluginStack {
         // C++ initializes sensors before motion/controllers/autonomy. A sensor may
         // detach belief from the initial truth before motion normalizes its state.
         for sensor in &mut self.sensors {
-            sensor.slot.messages.time_s = time.time_s;
+            sensor.messages.time_s = time.time_s;
             sensor
-                .slot
                 .plugin
                 .initialize(&mut SensorContext {
                     entity,
                     time,
                     truth,
-                    messages: &mut sensor.slot.messages,
+                    messages: &mut sensor.messages,
                     contacts_truth: &[],
                     random: &mut sensor.random,
                     belief: &mut self.belief,
                     pending: &mut self.pending,
                 })
-                .with_context(|| format!("initialize '{}'", sensor.slot.name))?;
+                .with_context(|| format!("initialize '{}'", sensor.name))?;
         }
         self.motion.messages.time_s = time.time_s;
         self.motion
@@ -435,24 +447,23 @@ impl PluginStack {
         contacts_truth: &[EntitySnapshot],
     ) -> Result<()> {
         for sensor in &mut self.sensors {
-            sensor.slot.messages.time_s = time.time_s;
-            if !sensor.slot.rate.due(time.dt_s) {
+            sensor.messages.time_s = time.time_s;
+            if !sensor.rate.due(time.dt_s) {
                 continue;
             }
             let update = sensor
-                .slot
                 .plugin
                 .step(&mut SensorContext {
                     entity,
                     time,
                     truth,
-                    messages: &mut sensor.slot.messages,
+                    messages: &mut sensor.messages,
                     contacts_truth,
                     random: &mut sensor.random,
                     belief: &mut self.belief,
                     pending: &mut self.pending,
                 })
-                .with_context(|| format!("step '{}' on entity {}", sensor.slot.name, entity.id))?;
+                .with_context(|| format!("step '{}' on entity {}", sensor.name, entity.id))?;
             handle_update(update, &mut self.stop_requested);
         }
         Ok(())
@@ -472,7 +483,7 @@ impl PluginStack {
         }
         mailboxes.push(self.motion.mailbox(entity_id, "motion", 0));
         for (index, sensor) in self.sensors.iter_mut().enumerate() {
-            mailboxes.push(sensor.slot.mailbox(entity_id, "sensor", index));
+            mailboxes.push(sensor.mailbox(entity_id, "sensor", index));
         }
     }
     pub fn close(&mut self, time: StepTime) -> Result<()> {
@@ -491,7 +502,7 @@ impl PluginStack {
         }
         record(self.motion.close(time, MotionBehavior::close));
         for sensor in &mut self.sensors {
-            record(sensor.slot.close(time, SensorBehavior::close));
+            record(sensor.close(time, SensorBehavior::close));
         }
         failure.map_or(Ok(()), Err)
     }

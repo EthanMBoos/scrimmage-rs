@@ -7,6 +7,58 @@ tools live in the repository; generated recordings and reports belong under igno
 Run commands from the `scrimmage-rs` repository root. Recorded results below describe
 the named batch, not a claim that every later change or the whole port is verified.
 
+## NoisyContacts and SphereNetwork + AuctionAssign (2026-09-24)
+
+These are the only accepted additions from the plugin audit. Repeat the focused
+checks with:
+
+```sh
+cargo test --locked -p scrimmage-core noisy_contacts
+cargo test --locked -p scrimmage-core sphere_network
+cargo test --locked -p scrimmage-core --test plugin_contracts perception_communication
+cargo test --locked -p scrimmage-core --test simulation_regression
+cargo test --locked -p scrimmage-rs --test run_output every_shipped_mission
+```
+
+Coverage:
+
+- NoisyContacts equation tests cover bias, Gaussian moments, interleaved draw
+  order, body-axis attitude errors, preserved angular velocity, 5I covariance,
+  and invalid parameters. A public test autonomy drives from the delivered
+  measurement: target x=50 with +2 m bias commands 52 m/s on the next tick,
+  while own belief remains unchanged by the sensor.
+- [Perception/communication contracts](../crates/core/tests/support/perception_communication.rs)
+  check self exclusion, local subscriber isolation, scheduled targets appearing,
+  empty snapshots after removal, an out-of-range agent excluded from the auction,
+  highest-received-bid selection, one result after the strict deadline, and a
+  short auction closing without bids and ignoring later arrivals.
+- SphereNetwork tests cover strict 3D range, changed positions, inclusive
+  altitude-plane epsilon bounds, same-entity geometry bypass, unreachable world
+  endpoints, invalid configuration, and rejected legacy delay modes. Complete
+  loss also suppresses same-entity auction traffic.
+- Actual noisy measurements and lossy auction histories match at 1/2/8 workers
+  for two seeds. Changed seed and transmission probability change observations
+  and/or deliveries. Independent subscribers see the same loss-free result.
+- All fourteen shipped missions have identical frame bytes, events, and summaries
+  at 1/2/8 workers. CLI regression checks also compare those artifacts with
+  headless Rerun recording on/off at 8 workers, including the two new missions.
+
+Recorded on this Mac: `cargo test --workspace --locked --offline` passed **122
+Rust tests** (including 18 public plugin contracts); `cargo clippy --workspace
+--all-targets --locked --offline -- -D warnings` passed. The scheduler, state,
+and delivery rules were not changed. Agent and network contexts gained each
+plugin's mission-seeded random stream; sensor streams are unchanged, and all 14
+shipped missions produced byte-identical frames, events, and summaries before
+and after that change.
+
+These are source-reviewed Rust ports with deliberate differences documented in
+[REFERENCE_NOTES.md](REFERENCE_NOTES.md) and [RUST_PLUGINS.md](RUST_PLUGINS.md#noisycontacts).
+No fresh C++ execution or direct C++ message/event comparison was performed for
+this batch; stochastic streams and post-motion network geometry deliberately
+differ. Stock frames/events do not record the new payloads, which is why the
+public consumer tests inspect their actual values. Recording equality is not
+visual QA, and no dashboard changes or visual verification are claimed.
+
 ## NoisyState, owned belief, and Straight's LocalNetwork consumption
 
 ### Check the Rust behavior

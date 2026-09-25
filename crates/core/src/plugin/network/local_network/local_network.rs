@@ -33,7 +33,7 @@ impl Plugin for LocalNetwork {
 
 impl Network for LocalNetwork {
     fn step(&mut self, context: &mut NetworkContext<'_, '_>) -> Result<Update> {
-        context.route(|link| {
+        context.route(|link, _random| {
             let Some(sender_entity_id) = link.sender.entity_id else {
                 return Ok(Delivery::Drop);
             };

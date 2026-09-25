@@ -5,6 +5,7 @@ pub(super) mod interaction;
 pub(super) mod metrics;
 pub(super) mod motion;
 pub(super) mod network;
+mod perception_communication;
 pub(super) mod sensor;
 
 use anyhow::Result;

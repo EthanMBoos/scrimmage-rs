@@ -1,7 +1,10 @@
 //! Shared plugin lifecycle, configuration, and execution contexts.
 //! Category-specific interfaces live in the corresponding framework modules.
 use crate::{
-    EntitySnapshot, KinematicState, Params, common::Ports, pubsub::Messages, sensor::Observations,
+    EntitySnapshot, KinematicState, Params,
+    common::{PluginRandom, Ports},
+    pubsub::Messages,
+    sensor::Observations,
 };
 use anyhow::Result;
 use std::collections::BTreeMap;
@@ -68,6 +71,8 @@ pub struct AgentContext<'a> {
     pub state: &'a KinematicState,
     pub observations: &'a Observations,
     pub contacts_truth: &'a [EntitySnapshot],
+    /// This plugin instance's mission-seeded random stream.
+    pub random: &'a mut PluginRandom,
 }
 
 pub struct WorldContext<'a> {

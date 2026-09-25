@@ -1,6 +1,7 @@
 //! Plugin-owned mailboxes; only the coordinator routes immutable message payloads.
 use crate::{
     EntitySnapshot,
+    common::PluginRandom,
     plugin::{StepTime, Update},
 };
 use anyhow::{Result, ensure};
@@ -167,6 +168,7 @@ pub struct NetworkContext<'a, 'mailbox> {
     pub(crate) endpoint: &'a MessageEndpoint,
     pub(crate) mailboxes: &'a mut [Mailbox<'mailbox>],
     pub(crate) scheduled: &'a mut Vec<ScheduledMessage>,
+    pub(crate) random: &'a mut PluginRandom,
     pub(crate) routed: bool,
 }
 impl NetworkContext<'_, '_> {
@@ -180,7 +182,7 @@ impl NetworkContext<'_, '_> {
     }
     pub fn route(
         &mut self,
-        mut decide: impl FnMut(&Transmission<'_>) -> Result<Delivery>,
+        mut decide: impl FnMut(&Transmission<'_>, &mut PluginRandom) -> Result<Delivery>,
     ) -> Result<Update> {
         ensure!(!self.routed, "network may route once per phase");
         self.routed = true;
@@ -216,7 +218,7 @@ impl NetworkContext<'_, '_> {
                     topic: &publication.channel.1,
                     contacts_truth: self.contacts_truth,
                 };
-                if let Delivery::After { delay_s } = decide(&link)? {
+                if let Delivery::After { delay_s } = decide(&link, self.random)? {
                     ensure!(
                         delay_s.is_finite() && delay_s >= 0.0,
                         "network delay must be finite and nonnegative"
@@ -349,6 +351,7 @@ mod tests {
                 endpoint: &endpoint,
                 mailboxes: &mut mailboxes,
                 scheduled: &mut self.scheduled,
+                random: &mut PluginRandom::new(1, 0, "test"),
                 routed: false,
             })?;
             Ok(())
@@ -393,7 +396,7 @@ mod tests {
         let mut mailboxes = TestMailboxes::new()?;
         mailboxes.sender.publish("test", "sample", 3_i32)?;
         mailboxes.phase(0.0, |context| {
-            context.route(|_| Ok(Delivery::After { delay_s: 0.2 }))
+            context.route(|_, _| Ok(Delivery::After { delay_s: 0.2 }))
         })?;
         assert!(
             mailboxes
@@ -401,14 +404,14 @@ mod tests {
                 .receive::<i32>("test", "sample")?
                 .is_empty()
         );
-        mailboxes.phase(0.1, |context| context.route(|_| Ok(Delivery::Drop)))?;
+        mailboxes.phase(0.1, |context| context.route(|_, _| Ok(Delivery::Drop)))?;
         assert!(
             mailboxes
                 .same_entity
                 .receive::<i32>("test", "sample")?
                 .is_empty()
         );
-        mailboxes.phase(0.2, |context| context.route(|_| Ok(Delivery::Drop)))?;
+        mailboxes.phase(0.2, |context| context.route(|_, _| Ok(Delivery::Drop)))?;
         let received = mailboxes.same_entity.receive::<i32>("test", "sample")?;
         assert_eq!(received.len(), 1);
         assert_eq!(received[0].sent_at_s, 0.0);
@@ -430,7 +433,7 @@ mod tests {
         assert!(
             mailboxes
                 .phase(0.0, |context| context
-                    .route(|_| Ok(Delivery::After { delay_s: 0.0 })))
+                    .route(|_, _| Ok(Delivery::After { delay_s: 0.0 })))
                 .is_err()
         );
         for delay_s in [-1.0, f64::NAN, f64::INFINITY] {
@@ -439,7 +442,7 @@ mod tests {
             assert!(
                 mailboxes
                     .phase(0.0, |context| context
-                        .route(|_| Ok(Delivery::After { delay_s })))
+                        .route(|_, _| Ok(Delivery::After { delay_s })))
                     .is_err()
             );
         }
@@ -456,7 +459,7 @@ mod tests {
             context
                 .messages()
                 .publish("test", "network_status", 9_i32)?;
-            context.route(|_| Ok(Delivery::After { delay_s: 0.0 }))?;
+            context.route(|_, _| Ok(Delivery::After { delay_s: 0.0 }))?;
             assert_eq!(
                 *context
                     .messages()
@@ -478,8 +481,8 @@ mod tests {
         assert!(
             mailboxes
                 .phase(0.0, |context| {
-                    context.route(|_| Ok(Delivery::Drop))?;
-                    context.route(|_| Ok(Delivery::Drop))
+                    context.route(|_, _| Ok(Delivery::Drop))?;
+                    context.route(|_, _| Ok(Delivery::Drop))
                 })
                 .is_err()
         );
@@ -504,7 +507,7 @@ mod tests {
         for value in 0..SUBSCRIBER_CAPACITY {
             mailboxes.sender.publish("test", "sample", value as i32)?;
             mailboxes.phase(value as f64, |context| {
-                context.route(|_| Ok(Delivery::After { delay_s: 0.0 }))
+                context.route(|_, _| Ok(Delivery::After { delay_s: 0.0 }))
             })?;
             let fast = mailboxes.same_entity.receive::<i32>("test", "sample")?;
             assert_eq!(fast.len(), 1);
@@ -513,7 +516,7 @@ mod tests {
         mailboxes.sender.publish("test", "sample", -1_i32)?;
         let error = mailboxes
             .phase(2000.0, |context| {
-                context.route(|_| Ok(Delivery::After { delay_s: 0.0 }))
+                context.route(|_, _| Ok(Delivery::After { delay_s: 0.0 }))
             })
             .unwrap_err();
         assert!(error.to_string().contains("subscriber"));
@@ -548,7 +551,7 @@ mod tests {
         mailboxes.sender.publish("test", "sample", 1_i32)?;
         let error = mailboxes
             .phase(0.0, |context| {
-                context.route(|_| Ok(Delivery::After { delay_s: 1.0 }))
+                context.route(|_, _| Ok(Delivery::After { delay_s: 1.0 }))
             })
             .unwrap_err();
         assert!(error.to_string().contains("network 'test' queue full"));
@@ -561,14 +564,14 @@ mod tests {
         let mut mailboxes = TestMailboxes::new()?;
         mailboxes.sender.publish("test", "sample", 42_i32)?;
         mailboxes.phase(0.0, |context| {
-            context.route(|_| Ok(Delivery::After { delay_s: 1.0 }))
+            context.route(|_, _| Ok(Delivery::After { delay_s: 1.0 }))
         })?;
         assert_eq!(mailboxes.scheduled.len(), 2);
         mailboxes.phase(1.0, |context| {
             // Omit the other entity's mailbox, as the engine does after removal.
             let mailboxes = std::mem::take(&mut context.mailboxes);
             context.mailboxes = &mut mailboxes[..2];
-            context.route(|_| Ok(Delivery::Drop))
+            context.route(|_, _| Ok(Delivery::Drop))
         })?;
         assert!(mailboxes.scheduled.is_empty());
         assert_eq!(

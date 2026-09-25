@@ -1,18 +1,18 @@
 # Selected v1 models
 
 Keep a useful student research workflow, not a large compatibility catalog.
-The stock registry currently contains 19 models across all seven roles. Other
+The stock registry currently contains 22 models across all seven roles. Other
 compiled Rust models can register through the same interfaces without editing
 the simulation loop. No runtime library loading is planned.
 
 | Role | Selected now | Later / excluded and why |
 | --- | --- | --- |
-| Autonomy | Straight; Rust-native WaypointFollower | More research behaviors when needed. MotorSchemas/nested plugin composition and GraphvizFSM are not prerequisites for navigation. Legacy protobuf spawning and camera windows are excluded. |
+| Autonomy | Straight; Rust-native WaypointFollower; AuctionAssign | More research behaviors when needed. MotorSchemas/nested plugin composition and GraphvizFSM are not prerequisites for navigation. Legacy protobuf spawning and camera windows are excluded. |
 | Controller | SimpleAircraftControllerPID; SingleIntegratorControllerSimple; AircraftPIDController; Rust-only MotorSpeeds | SimpleAircraft PID roll/glide-slope modes deferred; unsupported modes are errors. MotorSpeeds supplies constant rotor commands for testing, not stabilization or navigation. |
 | Motion | SimpleAircraft; SingleIntegrator; FixedWing6DOF; Multirotor | Flight-model limitations are commented beside their equations. Multirotor retains C++ behavior; external-force contact and acceleration sensor access are not exposed. JSBSim is an offline verification candidate, not a runtime plugin. |
-| Sensor | NoisyState; NoisyPosition (Rust-only teaching example) | Target/contact detection, cameras, and other sensors need a concrete observation contract and research use. Not porting the entire catalog. |
+| Sensor | NoisyState; NoisyContacts; NoisyPosition (Rust-only teaching example) | NoisyContacts measures every other live entity; no range/FOV, missed detections, or tracker. Cameras and richer sensors are not selected. |
 | Interaction | SimpleCollision; GroundCollision; Boundary; Rust-native WaypointBroadcast | Physics-engine collisions, richer geometry, and games/scoring environments deferred. No integration-specific spawning here. |
-| Network | GlobalNetwork; LocalNetwork | Range-based networks/spatial optimization later. Legacy delay modes remain rejected; compiled networks can use explicit delay/loss. No OpenCL path. |
+| Network | GlobalNetwork; LocalNetwork; SphereNetwork | SphereNetwork uses direct 3D distance checks and optional altitude-plane filtering; no spatial index. Legacy delay modes remain rejected; compiled networks can use explicit delay/loss. No OpenCL path. |
 | Metrics | SimpleCollisionMetrics, including ground counts | Add experiment-specific metrics as ordinary plugins. No generic statistics/service framework. |
 
 ## Deliberate limits
@@ -48,3 +48,11 @@ the simulation loop. No runtime library loading is planned.
 ROS 1/2 and ArduPilot are separate future adapter work. They are not reasons to
 add default ROS/C++ build dependencies. Burn, YAML/templates, terrain, and
 spatial acceleration remain in [TODO.md](TODO.md), outside this v1 slice.
+
+The plugin audit's selected additions are complete: NoisyContacts and
+SphereNetwork + AuctionAssign. The other proposed ports and the force, dynamics
+telemetry, battery, game, and geometry extensions they motivate are not selected
+backlog. Keep their limitations documented; do not add them for completeness.
+AuctionAssign is a single random-bid messaging demonstration with stationary
+agents, not a task planner. See [plugin contracts](RUST_PLUGINS.md#noisycontacts)
+for observation types, radio policies, random streams, and examples.

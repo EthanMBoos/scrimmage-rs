@@ -8,24 +8,33 @@ use anyhow::{Result, ensure};
 use nalgebra::{Matrix3, UnitQuaternion};
 
 use crate::math::{KinematicState, Quaternion, Vec3};
-use crate::plugin::{Plugin, PluginParams, Sensor, SensorContext, SensorRandom, Update};
+use crate::plugin::{Plugin, PluginParams, PluginRandom, Sensor, SensorContext, Update};
 
 pub const STATE_TOPIC: &str = "StateWithCovariance";
 
+/// Legacy `mean standard_deviation` noise for one axis.
 #[derive(Clone, Copy)]
-struct AxisNoise {
-    mean: f64,
-    stddev: f64,
+pub(super) struct AxisNoise {
+    pub(super) mean: f64,
+    pub(super) stddev: f64,
+}
+
+/// The C++ state-noise equations, shared by NoisyState and NoisyContacts so both
+/// keep identical parameters, draw order, and attitude perturbation.
+#[derive(Clone, Copy)]
+pub(super) struct StateNoise {
+    pub(super) position_m: [AxisNoise; 3],
+    pub(super) velocity_mps: [AxisNoise; 3],
+    pub(super) orientation_rad: [AxisNoise; 3],
 }
 
 pub struct NoisyStateConfig {
-    position_noise_m: [AxisNoise; 3],
-    velocity_noise_mps: [AxisNoise; 3],
-    orientation_noise_rad: [AxisNoise; 3],
+    noise: StateNoise,
 }
 
-/// Legacy covariance is identity, NOT the configured noise variance.
-/// C++ also leaves angular velocity zero in its newly constructed message.
+/// Legacy state payload; covariance is a placeholder, NOT configured noise variance.
+/// NoisyState uses identity and zero angular velocity; NoisyContacts uses 5I
+/// and preserves the target's angular velocity, matching their C++ constructors.
 #[derive(Clone, Debug)]
 pub struct StateWithCovariance {
     pub state: KinematicState,
@@ -33,9 +42,7 @@ pub struct StateWithCovariance {
 }
 
 pub struct NoisyState {
-    position_noise_m: [AxisNoise; 3],
-    velocity_noise_mps: [AxisNoise; 3],
-    orientation_noise_rad: [AxisNoise; 3],
+    noise: StateNoise,
 }
 
 impl Plugin for NoisyState {
@@ -43,17 +50,13 @@ impl Plugin for NoisyState {
 
     fn configure(params: &PluginParams<'_>) -> Result<NoisyStateConfig> {
         Ok(NoisyStateConfig {
-            position_noise_m: parse_noise(params, "pos_noise")?,
-            velocity_noise_mps: parse_noise(params, "vel_noise")?,
-            orientation_noise_rad: parse_noise(params, "orient_noise")?,
+            noise: StateNoise::parse(params)?,
         })
     }
 
     fn new(config: &NoisyStateConfig) -> Self {
         Self {
-            position_noise_m: config.position_noise_m,
-            velocity_noise_mps: config.velocity_noise_mps,
-            orientation_noise_rad: config.orientation_noise_rad,
+            noise: config.noise,
         }
     }
 }
@@ -79,31 +82,55 @@ impl NoisyState {
     fn measure(
         &self,
         truth: &KinematicState,
-        random: &mut SensorRandom,
+        random: &mut PluginRandom,
     ) -> Result<StateWithCovariance> {
-        let mut measured = KinematicState::default();
+        let mut measured = self.noise.apply(truth, random)?;
+        // Matches C++ for now, though we don't consider it correct: the C++ message
+        // starts from a default state, so a rotating vehicle reports zero angular velocity.
+        measured.angular_velocity_world_radps = Vec3::zeros();
+        // Matches C++ for now: identity is a placeholder, not the configured noise variance.
+        Ok(StateWithCovariance {
+            state: measured,
+            covariance: Matrix3::identity(),
+        })
+    }
+}
+
+impl StateNoise {
+    /// Reads `pos_noise_0..2`, `vel_noise_0..2`, and `orient_noise_0..2`.
+    /// A missing axis defaults to mean 0 and standard deviation 1, as in C++.
+    pub(super) fn parse(params: &PluginParams<'_>) -> Result<Self> {
+        Ok(Self {
+            position_m: parse_axes(params, "pos_noise")?,
+            velocity_mps: parse_axes(params, "vel_noise")?,
+            orientation_rad: parse_axes(params, "orient_noise")?,
+        })
+    }
+
+    /// Returns truth with noisy position, velocity, and attitude.
+    /// Angular velocity is copied unchanged; callers apply their C++ constructor's rule.
+    pub(super) fn apply(
+        &self,
+        truth: &KinematicState,
+        random: &mut PluginRandom,
+    ) -> Result<KinematicState> {
+        let mut measured = truth.clone();
         // C++ interleaves position and velocity samples per axis, including zero noise.
         for axis in 0..3 {
-            let position_noise = self.position_noise_m[axis];
-            let velocity_noise = self.velocity_noise_mps[axis];
+            let position_noise = self.position_m[axis];
+            let velocity_noise = self.velocity_mps[axis];
             measured.position_world_m[axis] = truth.position_world_m[axis]
                 + random.normal(position_noise.mean, position_noise.stddev)?;
             measured.velocity_world_mps[axis] = truth.velocity_world_mps[axis]
                 + random.normal(velocity_noise.mean, velocity_noise.stddev)?;
         }
 
-        let roll_noise_rad = random.normal(
-            self.orientation_noise_rad[0].mean,
-            self.orientation_noise_rad[0].stddev,
-        )?;
-        let pitch_noise_rad = random.normal(
-            self.orientation_noise_rad[1].mean,
-            self.orientation_noise_rad[1].stddev,
-        )?;
-        let yaw_noise_rad = random.normal(
-            self.orientation_noise_rad[2].mean,
-            self.orientation_noise_rad[2].stddev,
-        )?;
+        let roll_noise_rad =
+            random.normal(self.orientation_rad[0].mean, self.orientation_rad[0].stddev)?;
+        let pitch_noise_rad =
+            random.normal(self.orientation_rad[1].mean, self.orientation_rad[1].stddev)?;
+        let yaw_noise_rad =
+            random.normal(self.orientation_rad[2].mean, self.orientation_rad[2].stddev)?;
         let roll_error =
             UnitQuaternion::from_axis_angle(&Vec3::x_axis(), roll_noise_rad).into_inner();
         let pitch_error =
@@ -122,14 +149,11 @@ impl NoisyState {
             y: orientation.j,
             z: orientation.k,
         };
-        Ok(StateWithCovariance {
-            state: measured,
-            covariance: Matrix3::identity(),
-        })
+        Ok(measured)
     }
 }
 
-fn parse_noise(params: &PluginParams<'_>, prefix: &str) -> Result<[AxisNoise; 3]> {
+fn parse_axes(params: &PluginParams<'_>, prefix: &str) -> Result<[AxisNoise; 3]> {
     let mut axes = [AxisNoise {
         mean: 0.0,
         stddev: 1.0,
@@ -148,19 +172,21 @@ fn parse_noise(params: &PluginParams<'_>, prefix: &str) -> Result<[AxisNoise; 3]
 
 #[cfg(test)]
 mod tests {
-    use super::{AxisNoise, NoisyState, NoisyStateConfig};
+    use super::{AxisNoise, NoisyState, NoisyStateConfig, StateNoise};
     use crate::Params;
     use crate::math::{EulerAngles, KinematicState, Quaternion, Vec3};
-    use crate::plugin::{Plugin, PluginParams, SensorRandom};
+    use crate::plugin::{Plugin, PluginParams, PluginRandom};
 
     fn sensor(stddev: f64) -> NoisyState {
         NoisyState::new(&NoisyStateConfig {
-            position_noise_m: [AxisNoise { mean: 2.0, stddev }; 3],
-            velocity_noise_mps: [AxisNoise { mean: -1.0, stddev }; 3],
-            orientation_noise_rad: [AxisNoise {
-                mean: 0.0,
-                stddev: 0.0,
-            }; 3],
+            noise: StateNoise {
+                position_m: [AxisNoise { mean: 2.0, stddev }; 3],
+                velocity_mps: [AxisNoise { mean: -1.0, stddev }; 3],
+                orientation_rad: [AxisNoise {
+                    mean: 0.0,
+                    stddev: 0.0,
+                }; 3],
+            },
         })
     }
 
@@ -172,7 +198,7 @@ mod tests {
             angular_velocity_world_radps: Vec3::repeat(7.0),
             ..KinematicState::default()
         };
-        let sample = sensor(0.0).measure(&truth, &mut SensorRandom::new(123, 1, "NoisyState:0"))?;
+        let sample = sensor(0.0).measure(&truth, &mut PluginRandom::new(123, 1, "NoisyState:0"))?;
         assert_eq!(sample.state.position_world_m, Vec3::new(12.0, 22.0, 32.0));
         assert_eq!(sample.state.velocity_world_mps, Vec3::new(2.0, 3.0, 4.0));
         assert_eq!(sample.state.angular_velocity_world_radps, Vec3::zeros());
@@ -184,8 +210,8 @@ mod tests {
     #[test]
     fn attitude_noise_rotates_body_axes_in_roll_pitch_yaw_order() -> anyhow::Result<()> {
         let mut sensor = sensor(0.0);
-        sensor.orientation_noise_rad[0].mean = std::f64::consts::FRAC_PI_2;
-        sensor.orientation_noise_rad[1].mean = std::f64::consts::FRAC_PI_2;
+        sensor.noise.orientation_rad[0].mean = std::f64::consts::FRAC_PI_2;
+        sensor.noise.orientation_rad[1].mean = std::f64::consts::FRAC_PI_2;
         let truth = KinematicState {
             orientation_world_from_body: Quaternion::from_euler(EulerAngles {
                 yaw_world_from_body_rad: std::f64::consts::FRAC_PI_2,
@@ -193,7 +219,7 @@ mod tests {
             }),
             ..KinematicState::default()
         };
-        let sample = sensor.measure(&truth, &mut SensorRandom::new(123, 1, "NoisyState:0"))?;
+        let sample = sensor.measure(&truth, &mut PluginRandom::new(123, 1, "NoisyState:0"))?;
         let nose = sample
             .state
             .orientation_world_from_body
@@ -204,8 +230,8 @@ mod tests {
 
     #[test]
     fn seeded_samples_follow_interleaved_axis_order() -> anyhow::Result<()> {
-        let mut random = SensorRandom::new(123, 1, "NoisyState:0");
-        let mut expected = SensorRandom::new(123, 1, "NoisyState:0");
+        let mut random = PluginRandom::new(123, 1, "NoisyState:0");
+        let mut expected = PluginRandom::new(123, 1, "NoisyState:0");
         let sample = sensor(0.5).measure(&KinematicState::default(), &mut random)?;
         for axis in 0..3 {
             assert_eq!(
@@ -227,7 +253,7 @@ mod tests {
     #[test]
     fn position_noise_has_the_configured_mean_and_variance() -> anyhow::Result<()> {
         let sensor = sensor(0.5);
-        let mut random = SensorRandom::new(123, 1, "NoisyState:0");
+        let mut random = PluginRandom::new(123, 1, "NoisyState:0");
         let mut sum = 0.0;
         let mut sum_squared = 0.0;
         for _ in 0..10000 {

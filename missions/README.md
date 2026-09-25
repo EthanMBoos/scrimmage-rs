@@ -2,7 +2,7 @@
 
 Run from the repository root with `scrimmage run missions/<file> --headless`.
 Replay the printed run directory with `scrimmage replay runs/runNNN`.
-These twelve XML files use the compiled built-ins. They are examples and regression
+These fourteen XML files use the compiled built-ins. They are examples and regression
 inputs, not a copy of every upstream demo.
 
 | Mission | What to try or verify |
@@ -11,6 +11,8 @@ inputs, not a copy of every upstream demo.
 | `fixed-wing-6dof.xml` | Two aerodynamic aircraft: level eastbound and tilted northbound with wind. A reference fixture, not a trimmed flight demonstration. |
 | `multirotor.xml` | Open-loop quad hover, tilted flight, unequal motor speeds, and six-rotor climb. `MotorSpeeds` supplies constant rad/s commands; no autopilot or landing controller. |
 | `networks-local-global.xml` | NoisyState over LocalNetwork; Boundary over GlobalNetwork turns both aircraft; a third aircraft hits the ground. Set `boundary_control:=false` or `ground_team:=1` to see the difference. |
+| `noisy-contacts.xml` | Two route-following agents measure other contacts; typed LocalNetwork messages are available to downstream plugins. The route follower does not consume them. |
+| `auction-sphere.xml` | Stationary agents run a one-shot random-bid auction; the third is out of range. Try `range:=300`, `prob_transmit:=0.65`, or `seed:=42`. Results are typed messages, not stock summary/event fields. |
 | `noisy-state.xml` | Independent own-state noise and belief feedback. Not sample-for-sample C++ RNG parity. |
 | `waypoints-aircraft.xml` | Two aircraft follow a looping route; a shared GlobalNetwork replacement at 12 s changes both goals. Set `update_at:=100` to suppress that update. |
 | `waypoints-point-agents.xml` | Two SingleIntegrator agents receive a replacement at 3 s and stop at the final point. Set `update_at:=100` to retain the original route. |

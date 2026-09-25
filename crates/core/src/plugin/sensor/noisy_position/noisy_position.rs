@@ -71,7 +71,7 @@ impl Sensor for NoisyPosition {
 #[cfg(test)]
 mod tests {
     use super::{NoisyPosition, Plugin, PositionObservation, Sensor, SensorConfig, SensorContext};
-    use crate::plugin::{EntityInfo, Messages, Observations, SensorRandom, StepTime, Update};
+    use crate::plugin::{EntityInfo, Messages, Observations, PluginRandom, StepTime, Update};
     use crate::{KinematicState, Vec3};
 
     #[test]
@@ -95,8 +95,8 @@ mod tests {
             position_world_m: Vec3::new(10.0, 20.0, 30.0),
             ..KinematicState::default()
         };
-        let mut random = SensorRandom::new(12345, 1, "NoisyPosition:0");
-        let mut expected_random = SensorRandom::new(12345, 1, "NoisyPosition:0");
+        let mut random = PluginRandom::new(12345, 1, "NoisyPosition:0");
+        let mut expected_random = PluginRandom::new(12345, 1, "NoisyPosition:0");
         let expected_noise_world_m = Vec3::new(
             expected_random.normal(0.0, stddev_m)?,
             expected_random.normal(0.0, stddev_m)?,

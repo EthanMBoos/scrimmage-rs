@@ -148,7 +148,7 @@ mod tests {
     use super::AircraftPidController;
     use crate::plugin::{
         AgentContext, Controller, EntityInfo, Messages, Observations, Plugin, PluginIo,
-        PluginParams, StepTime,
+        PluginParams, PluginRandom, StepTime,
     };
     use crate::{KinematicState, Params};
 
@@ -188,6 +188,7 @@ mod tests {
                     observations: &observations,
                     contacts_truth: &[],
                     messages: &mut messages,
+                    random: &mut PluginRandom::new(1, 1, "test"),
                 },
                 &mut io,
             )?;

@@ -38,6 +38,8 @@ fn mission_output_is_independent_of_worker_count() -> Result<()> {
         "test_missions/straight_cpu_threaded.xml",
         "verification/aircraft-substeps-spawning.xml",
         "noisy-state.xml",
+        "noisy-contacts.xml",
+        "auction-sphere.xml",
         "networks-local-global.xml",
         "waypoints-aircraft.xml",
         "waypoints-point-agents.xml",

@@ -9,7 +9,7 @@ pub mod network;
 pub mod sensor;
 
 pub use crate::autonomy::Autonomy;
-pub use crate::common::{Frame, PluginIo, Port, Ports, SensorRandom, Unit};
+pub use crate::common::{Frame, PluginIo, PluginRandom, Port, Ports, Unit};
 pub use crate::controller::Controller;
 pub use crate::entity_interaction::{Interaction, InteractionContext};
 pub use crate::metrics::{MetricReport, Metrics, TeamMetrics};

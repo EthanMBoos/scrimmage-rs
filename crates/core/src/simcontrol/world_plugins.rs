@@ -115,25 +115,25 @@ impl CompiledWorld {
             metrics,
         })
     }
-    pub fn instantiate(&self) -> WorldPlugins {
+    pub fn instantiate(&self, seed: u32) -> WorldPlugins {
         WorldPlugins {
             interactions: self
                 .interactions
                 .iter()
                 .enumerate()
-                .map(|(index, plugin)| WorldSlot::new(plugin, index, "interaction"))
+                .map(|(index, plugin)| WorldSlot::new(plugin, index, "interaction", seed))
                 .collect(),
             networks: self
                 .networks
                 .iter()
                 .enumerate()
-                .map(|(index, plugin)| WorldSlot::new(plugin, index, "network"))
+                .map(|(index, plugin)| WorldSlot::new(plugin, index, "network", seed))
                 .collect(),
             metrics: self
                 .metrics
                 .iter()
                 .enumerate()
-                .map(|(index, plugin)| WorldSlot::new(plugin, index, "metrics"))
+                .map(|(index, plugin)| WorldSlot::new(plugin, index, "metrics", seed))
                 .collect(),
         }
     }
@@ -144,15 +144,19 @@ struct WorldSlot<T: ?Sized> {
     plugin: Box<T>,
     messages: Messages,
     scheduled: Vec<ScheduledMessage>,
+    // Only networks draw from this today; interactions and metrics can expose it when needed.
+    random: PluginRandom,
     closed: bool,
 }
 impl<T: ?Sized> WorldSlot<T> {
-    fn new(plugin: &CompiledPlugin<T>, index: usize, category: &str) -> Self {
+    fn new(plugin: &CompiledPlugin<T>, index: usize, category: &str, seed: u32) -> Self {
+        let identity = format!("{category}/{}:{index}", plugin.name);
         Self {
             name: plugin.name.clone(),
+            random: PluginRandom::new(seed, 0, &identity),
             endpoint: MessageEndpoint {
                 entity_id: None,
-                plugin: format!("{category}/{}:{index}", plugin.name),
+                plugin: identity,
             },
             plugin: (plugin.instantiate)(),
             messages: Messages::default(),
@@ -291,6 +295,7 @@ impl WorldPlugins {
                 &slot.endpoint,
                 &mut slot.plugin,
                 &mut slot.scheduled,
+                &mut slot.random,
             ));
         }
         let names: Vec<_> = names.iter().map(String::as_str).collect();
@@ -298,7 +303,7 @@ impl WorldPlugins {
             mailbox.messages.validate_networks(&names)?;
         }
         let mut stop = false;
-        for (name, endpoint, plugin, scheduled) in network_steps {
+        for (name, endpoint, plugin, scheduled, random) in network_steps {
             let mut context = NetworkContext {
                 time,
                 contacts_truth: contacts,
@@ -306,6 +311,7 @@ impl WorldPlugins {
                 endpoint,
                 mailboxes: &mut mailboxes,
                 scheduled,
+                random,
                 routed: false,
             };
             let update = plugin

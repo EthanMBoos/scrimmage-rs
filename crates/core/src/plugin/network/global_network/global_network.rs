@@ -33,7 +33,7 @@ impl Plugin for GlobalNetwork {
 
 impl Network for GlobalNetwork {
     fn step(&mut self, context: &mut NetworkContext<'_, '_>) -> Result<Update> {
-        context.route(|_link| Ok(Delivery::After { delay_s: 0.0 }))
+        context.route(|_link, _random| Ok(Delivery::After { delay_s: 0.0 }))
     }
 }
 

@@ -6,6 +6,32 @@ verified against SCRIMMAGE's `Ubuntu-24.04` branch. That review used commit
 `4bdf41fb06facaea358d478d9a07aa4d77fcac27`; it is historical evidence, not a
 required commit pin. The port follows the branch in the sibling `../scrimmage` repo.
 
+## Selected contact and communication additions (2026-09-24)
+
+The accepted follow-up to the [catalog audit](PLUGIN_COVERAGE_AUDIT.md) is only
+NoisyContacts and SphereNetwork + AuctionAssign. Other proposals are not backlog.
+The implementations use the existing delivery phases. Agent and network contexts
+now carry each plugin's mission-seeded random stream, as sensor contexts already
+did. See
+[Rust plugin contracts](RUST_PLUGINS.md#noisycontacts) and [evidence](EVIDENCE.md).
+
+Source-verified behavior: NoisyContacts copies angular velocity and uses 5I
+covariance; attitude errors right-multiply roll, pitch, yaw. SphereNetwork's
+range is strict (`RTree.cpp` uses `< dist`), while altitude-plane epsilon bounds
+are inclusive. Same-parent delivery bypasses geometry but still draws for loss.
+AuctionAssign starts from entity 1, includes self-bidding, retains the first
+maximum on ties, and closes strictly after its deadline.
+
+Rust differences: measured contacts are sorted typed vectors; each plugin
+instance draws from its own mission-seeded RNG stream rather than a shared
+generator; range checks use current post-motion snapshots rather than
+C++'s earlier R-tree; AuctionAssign's network and duration are configurable, and
+its result uses `Option<AuctionBid>` instead of negative sentinels. NoisyContacts
+does not enforce truth isolation on downstream autonomy. Custom messages are
+not automatically archived by stock outputs. There is no claim of C++ random
+sequence, full mission compatibility, or fresh C++ payload/event parity for
+these additions. No reference source or comparison tolerance was changed.
+
 ## Authority and scope
 
 The 2026-09-24 [scope review and roadmap](TODO.md) supersedes older blanket

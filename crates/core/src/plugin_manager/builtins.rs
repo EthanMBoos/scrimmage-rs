@@ -6,6 +6,7 @@ use anyhow::Result;
 pub(crate) fn register_builtins(registry: &mut PluginRegistry) -> Result<()> {
     registry.register_autonomy::<autonomy::Straight>("Straight")?;
     registry.register_autonomy::<autonomy::WaypointFollower>("WaypointFollower")?;
+    registry.register_autonomy::<autonomy::AuctionAssign>("AuctionAssign")?;
     registry.register_controller::<controller::SingleIntegratorControllerSimple>(
         "SingleIntegratorControllerSimple",
     )?;
@@ -21,11 +22,13 @@ pub(crate) fn register_builtins(registry: &mut PluginRegistry) -> Result<()> {
     registry.register_controller::<controller::MotorSpeeds>("MotorSpeeds")?;
     registry.register_sensor::<sensor::NoisyPosition>("NoisyPosition")?;
     registry.register_sensor::<sensor::NoisyState>("NoisyState")?;
+    registry.register_sensor::<sensor::NoisyContacts>("NoisyContacts")?;
     registry.register_interaction::<interaction::SimpleCollision>("SimpleCollision")?;
     registry.register_interaction::<interaction::Boundary>("Boundary")?;
     registry.register_interaction::<interaction::GroundCollision>("GroundCollision")?;
     registry.register_network::<network::LocalNetwork>("LocalNetwork")?;
     registry.register_network::<network::GlobalNetwork>("GlobalNetwork")?;
+    registry.register_network::<network::SphereNetwork>("SphereNetwork")?;
     registry.register_metrics::<metrics::SimpleCollisionMetrics>("SimpleCollisionMetrics")?;
     Ok(())
 }

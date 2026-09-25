@@ -26,7 +26,7 @@ impl Plugin for ExampleNetwork {
 }
 impl Network for ExampleNetwork {
     fn step(&mut self, context: &mut NetworkContext<'_, '_>) -> Result<Update> {
-        context.route(|_link| {
+        context.route(|_link, _random| {
             if self.config.drop_messages {
                 Ok(Delivery::Drop)
             } else {

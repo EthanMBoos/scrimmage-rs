@@ -134,7 +134,8 @@ mod tests {
     #[test]
     fn local_messages_override_belief_only_on_the_receiving_entity() -> anyhow::Result<()> {
         use crate::plugin::{
-            AgentContext, Autonomy, EntityInfo, Messages, Observations, PluginIo, StepTime,
+            AgentContext, Autonomy, EntityInfo, Messages, Observations, PluginIo, PluginRandom,
+            StepTime,
         };
         use crate::plugin::{
             Network,
@@ -169,6 +170,7 @@ mod tests {
                 observations: &observations,
                 contacts_truth: &[],
                 messages,
+                random: &mut PluginRandom::new(1, 1, "test"),
             })?;
         }
         let mut publisher = Messages::default();
@@ -221,6 +223,7 @@ mod tests {
             endpoint: &endpoint,
             mailboxes: &mut mailboxes,
             scheduled: &mut Vec::new(),
+            random: &mut PluginRandom::new(1, 0, "test"),
             routed: false,
         })?;
         for (index, (autonomy, messages)) in autonomies.iter_mut().zip(&mut subscribers).enumerate()
@@ -236,6 +239,7 @@ mod tests {
                 observations: &observations,
                 contacts_truth: &[],
                 messages,
+                random: &mut PluginRandom::new(1, 1, "test"),
             };
             let mut io = PluginIo::new(&Straight::ports(&config));
             autonomy.step(&mut context, &mut io)?;

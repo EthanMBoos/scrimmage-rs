@@ -98,6 +98,7 @@ impl Simulation {
         } = scenario;
         let scheduler = Scheduler::new(worker_count)?;
 
+        let world = world.instantiate(config.seed);
         let mut simulation = Self {
             time_s: config.start_s - config.dt_s,
             rng: LegacyRng::new(config.seed),
@@ -109,7 +110,7 @@ impl Simulation {
             termination: None,
             scheduler,
             generators,
-            world: world.instantiate(),
+            world,
             messages: Messages::default(),
             entity_teams: BTreeMap::new(),
             world_stop: false,

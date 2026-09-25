@@ -1,7 +1,7 @@
 //! Sensor interface and observation delivery; concrete models live in plugin/sensor.
 use crate::{
     EntitySnapshot, KinematicState,
-    common::SensorRandom,
+    common::PluginRandom,
     plugin_manager::entity_plugin::{EntityInfo, Plugin, StepTime, Update},
     pubsub::Messages,
 };
@@ -17,7 +17,7 @@ pub struct SensorContext<'a> {
     /// Sensors sample committed truth after all motion substeps.
     pub truth: &'a KinematicState,
     pub contacts_truth: &'a [EntitySnapshot],
-    pub random: &'a mut SensorRandom,
+    pub random: &'a mut PluginRandom,
     pub(crate) belief: &'a mut Option<KinematicState>,
     pub(crate) pending: &'a mut Observations,
 }
@@ -52,7 +52,7 @@ pub trait Sensor: Plugin {
 #[cfg(test)]
 mod tests {
     use super::{Observations, SensorContext};
-    use crate::plugin::{EntityInfo, Messages, SensorRandom, StepTime};
+    use crate::plugin::{EntityInfo, Messages, PluginRandom, StepTime};
     use crate::{KinematicState, Vec3};
 
     #[test]
@@ -66,7 +66,7 @@ mod tests {
         let mut belief = None;
         let mut messages = Messages::default();
         let mut pending = Observations::default();
-        let mut random = SensorRandom::new(123, 1, "test");
+        let mut random = PluginRandom::new(123, 1, "test");
         let mut context = SensorContext {
             messages: &mut messages,
             entity: EntityInfo {

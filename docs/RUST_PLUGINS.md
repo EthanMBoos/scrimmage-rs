@@ -14,12 +14,12 @@ changes to an external plugin project.
 
 | Type | Owned by | Built-in implementation |
 | --- | --- | --- |
-| Autonomy | Entity | [Straight](../crates/core/src/plugin/autonomy/straight/straight.rs) |
+| Autonomy | Entity | [Straight](../crates/core/src/plugin/autonomy/straight/straight.rs); [AuctionAssign](../crates/core/src/plugin/autonomy/auction_assign/auction_assign.rs) |
 | Controller | Entity | [SimpleAircraftControllerPID](../crates/core/src/plugin/controller/simple_aircraft_pid/simple_aircraft_pid.rs) |
 | MotionModel | Entity | [SimpleAircraft](../crates/core/src/plugin/motion/simple_aircraft/simple_aircraft.rs) |
-| Sensor | Entity | [NoisyState](../crates/core/src/plugin/sensor/noisy_state/noisy_state.rs); [NoisyPosition](../crates/core/src/plugin/sensor/noisy_position/noisy_position.rs) (Rust-only illustration) |
+| Sensor | Entity | [NoisyState](../crates/core/src/plugin/sensor/noisy_state/noisy_state.rs); [NoisyContacts](../crates/core/src/plugin/sensor/noisy_contacts/noisy_contacts.rs); [NoisyPosition](../crates/core/src/plugin/sensor/noisy_position/noisy_position.rs) (Rust-only illustration) |
 | Interaction | Simulation | [SimpleCollision](../crates/core/src/plugin/interaction/simple_collision/simple_collision.rs) |
-| Network | Simulation | [LocalNetwork](../crates/core/src/plugin/network/local_network/local_network.rs), [GlobalNetwork](../crates/core/src/plugin/network/global_network/global_network.rs) |
+| Network | Simulation | [LocalNetwork](../crates/core/src/plugin/network/local_network/local_network.rs), [GlobalNetwork](../crates/core/src/plugin/network/global_network/global_network.rs), [SphereNetwork](../crates/core/src/plugin/network/sphere_network/sphere_network.rs) |
 | Metrics | Simulation | [SimpleCollisionMetrics](../crates/core/src/plugin/metrics/simple_collision_metrics/simple_collision_metrics.rs) |
 
 Each implementation is an ordinary struct containing its own state and model code.
@@ -236,6 +236,91 @@ The separate `verification/noisy-state-bias.xml` fixes standard deviations at
 zero to compare the retained equations and feedback against C++ independently
 of random-number generation. NoisyPosition remains a distinct Rust illustration.
 
+### NoisyContacts
+
+`NoisyContacts` measures every other active contact after motion, in entity-ID
+order, using the same `pos_noise_0..2`, `vel_noise_0..2`, and `orient_noise_0..2`
+mean/stddev parameters as NoisyState. It does not change own belief or truth and
+has no range/FOV filtering, detection probability, or persistent tracks.
+
+The public `plugin::sensor::ContactsWithCovariances` contains a `contacts` vector.
+Each `ContactWithCovariance` contains `entity: EntityInfo` and
+`measurement: StateWithCovariance`. Identity is retained; the kinematic state
+is measured. Like C++, this sensor preserves target angular velocity and sets
+covariance to **5I**, regardless of configured noise. NoisyState instead uses
+zero angular velocity and identity covariance. Neither is calibrated uncertainty.
+
+Include `<network>LocalNetwork</network>`. Every sample, including an empty one,
+is published on `topic_name` (default `ContactsWithCovariances`, exported as
+`CONTACTS_TOPIC`). Subscribe in autonomy initialization and consume it next tick:
+
+```rust
+use scrimmage_core::plugin::sensor::{CONTACTS_TOPIC, ContactsWithCovariances};
+// initialize:
+context.messages.subscribe::<ContactsWithCovariances>("LocalNetwork", CONTACTS_TOPIC)?;
+// step:
+for message in context.messages.receive::<ContactsWithCovariances>("LocalNetwork", CONTACTS_TOPIC)? {
+    for contact in &message.value.contacts {
+        let measured_position_m = contact.measurement.state.position_world_m;
+        // Use this measured position in your behavior.
+    }
+}
+```
+
+Like C++, the message is the only output; there is no separate local observation
+copy. A consumer that keeps the newest message sees it one tick after sampling.
+Removal clears a target on the next sensor sample after removal, not
+retroactively. Sensor streams use mission seed/entity/instance; C++ uses a
+shared generator and different contact iteration order.
+
+Try `missions/noisy-contacts.xml`. Its route follower does not consume contacts;
+the public-plugin contract tests include a consumer that drives from measured
+positions and checks next-tick feedback, spawn/removal, and worker determinism.
+Neither measurements nor auction messages are automatically saved in stock
+`events.json`, summaries, or the Rerun dashboard. Add an experiment-specific
+consumer/output path when those records are needed.
+
+### SphereNetwork and AuctionAssign
+
+`SphereNetwork` routes between entity endpoints with strict 3D
+`distance < range` (meters, default 100), using current post-motion truth.
+Same-entity endpoints bypass geometry. World plugins have no antenna position
+and are unreachable on this network; use GlobalNetwork for their traffic.
+`filter_comms_plane=true` permits two endpoints only when both are at/above
+`comms_boundary_altitude - comms_boundary_epsilon`, or both at/below altitude plus
+epsilon. Altitude and epsilon are meters; defaults are zero, epsilon nonnegative.
+
+Every reachable delivery, including same-entity traffic, independently succeeds
+with `prob_transmit` (0..1, default 1). Delivery is immediate in the network phase;
+there are no retries, persistence, or legacy communication-delay modes. Each
+subscriber has its own loss decision and queue. Adding subscribers changes RNG
+consumption. The stream is deterministic for a fixed configuration at 1/2/8 workers.
+
+`AuctionAssign` is the C++ single-round random-bid demonstration. Entity 1 starts
+once if `auctioneer=true` (default). All recipients, including itself, bid in
+(0,10). On its first update strictly after `auction_duration_s` (default 5), it
+publishes the highest bid it has received; ties retain the first delivery.
+No received bid produces `winner: None`, and late bids never revise the result.
+Use one AuctionAssign instance per entity. There is no retry, consensus guarantee
+under loss, task execution, or support for concurrent auction rounds. Zero world-velocity outputs hold the agent still;
+a later autonomy may overwrite them through the normal port merge.
+
+Typed payloads and topic constants are exported from `plugin::autonomy`:
+`AuctionStart { auctioneer_id }` / `START_AUCTION_TOPIC`,
+`AuctionBid { bidder_id, bid }` / `BID_AUCTION_TOPIC`, and
+`AuctionResult { winner: Option<AuctionBid> }` / `RESULT_AUCTION_TOPIC`.
+The topic strings are `StartAuction`, `BidAuction`, and `ResultAuction`.
+Subscribe to results in an entity plugin. `network_name` defaults to SphereNetwork;
+unlike C++'s hard-coded CommsNetwork alias, it selects a registered network name.
+
+Loss and bids draw from each plugin instance's own stream, derived from the
+mission `<seed>`, the entity ID (0 for world plugins), and a stable plugin
+identity such as `autonomy/AuctionAssign:0`. Changing the mission seed changes
+them, as C++'s shared mission-seeded generator does, but the sequences are not
+C++'s. `AgentContext::random` gives autonomies and controllers their stream,
+`SensorContext::random` gives sensors theirs, and `NetworkContext::route` passes
+the network's stream to its decision function as `|link, random|`.
+
 ## Messages
 
 Each plugin instance owns independent subscriptions, an incoming queue, and an
@@ -271,8 +356,9 @@ research defaults, not byte limits or legacy queue-policy compatibility. Drain
 subscriptions you create; a deliberately slow subscriber can fill its own queue.
 
 A network implements `step` and calls `context.route` once. Its decision
-function receives sender/receiver identities, topic, time, and world contacts,
-then returns `Delivery::Drop` or `Delivery::After { delay_s }`.
+function, `|link, random|`, receives a `Transmission` (sender/receiver
+identities, topic, time, and world contacts) and the network's own random
+stream, then returns `Delivery::Drop` or `Delivery::After { delay_s }`.
 Zero delay delivers during the current network phase; positive delay waits
 until a later phase, even if the publisher goes silent. A network can use its
 own mailbox through `context.messages()`.
@@ -337,8 +423,8 @@ See [MODEL_SCOPE.md](MODEL_SCOPE.md) for the selected aircraft, world, and waypo
 models, their options, and deliberate limits. [EVIDENCE.md](EVIDENCE.md) provides
 runnable checks. [TODO.md](TODO.md) lists current priorities. Legacy delay
 behavior, additional sensor models, and plugin debug
-geometry need further work. Readiness, services, runtime parameters, and
-callbacks should be implemented where selected models/integrations need them,
+geometry need further work. Services, runtime parameters, and
+callbacks should be implemented where selected simulation models need them,
 not copied as an unconditional framework backlog.
 
 Compiled downstream Rust plugins remain supported. Runtime shared-library
